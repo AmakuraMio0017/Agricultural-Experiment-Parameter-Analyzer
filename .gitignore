@@ -42,3 +42,7 @@ outputs/*
 # User data imports/exports should not be committed.
 *.user.xlsx
 *.user.csv
+
+# GitHub-synced example data sources.
+!example_data_sources/
+!example_data_sources/**
