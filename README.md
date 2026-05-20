@@ -19,6 +19,8 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+如果访问非中国大陆源下载速度约为 1 MB/s，完整依赖包体较大，尤其是 PySide6 相关 wheel。建议将自动化安装命令超时时间设置为至少 15 分钟，网络波动明显时使用 20 分钟或更长。
+
 ## 运行应用
 
 ```powershell
