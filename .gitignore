@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build and packaging
+build/
+dist/
+*.spec
+*.build/
+*.dist/
+*.onefile-build/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# App outputs and temporary files
+outputs/*
+!outputs/.gitkeep
+*.tmp
+*.log
+~$*
+
+# User data imports/exports should not be committed.
+*.user.xlsx
+*.user.csv
