@@ -58,3 +58,28 @@ def test_format_parameters_removes_unselected_parameters() -> None:
 
     assert "糖度" in formatted.columns
     assert "单果重" not in formatted.columns
+
+
+def test_excel_serial_date_column_is_detected_and_formatted() -> None:
+    df = pd.DataFrame(
+        {
+            "数据序号": [1, 2],
+            "采收日": [46106, 46106],
+            "处理情况": ["处理", "对照"],
+            "单果重": [12.78, 13.2],
+        }
+    )
+
+    detection = detect_columns(df)
+    formatted = format_parameters(
+        df,
+        detection.date_column,
+        detection.treatment_column,
+        detection.parameter_columns,
+    )
+
+    assert detection.date_column == "采收日"
+    assert detection.treatment_column == "处理情况"
+    assert detection.parameter_columns == ["单果重"]
+    assert str(formatted.loc[0, "日期"]) == "2026-03-25"
+    assert formatted.loc[0, "isoweek"] == 13

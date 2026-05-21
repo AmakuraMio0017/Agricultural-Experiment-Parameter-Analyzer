@@ -50,3 +50,14 @@
 - `python -m compileall main.py src tests`：已通过。
 - `python -m pytest`：5 passed。
 - 依赖安装在非中国 IP 链路约 1 MB/s 时建议超时 15-20 分钟。
+
+# 项目 AI 协作规范
+
+## 文档维护规则
+- 每次代码修改后，自动更新 CHANGELOG.md 记录变更
+- 不要修改 CHANGELOG.md 中已经存在的旧记录，只追加新内容
+- 在 CHANGELOG.md 中标注日期和变更摘要
+
+## Git 操作规则
+- 用户提出保存所有工作并结束本地操作后提醒我提交代码变更到git并同步推送至GitHub
+- 提交信息使用中文，格式：类型: 简述

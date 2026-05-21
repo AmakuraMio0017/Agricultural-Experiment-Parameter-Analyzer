@@ -7,8 +7,9 @@ from typing import Iterable
 import pandas as pd
 
 
-DATE_KEYWORDS = ("日期", "date", "time", "采样", "测定")
+DATE_KEYWORDS = ("日期", "date", "time", "采样", "采收", "收获", "测定")
 TREATMENT_KEYWORDS = ("处理", "分组", "group", "treatment", "control", "对照")
+INDEX_KEYWORDS = ("序号", "编号", "id", "index", "number", "no.")
 CSV_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "gb18030")
 
 
@@ -93,7 +94,9 @@ def _detect_date_column(df: pd.DataFrame, columns: list[str]) -> tuple[str | Non
 
     scores: list[tuple[str, float]] = []
     for column in columns:
-        parsed = pd.to_datetime(df[column], errors="coerce")
+        if pd.to_numeric(df[column], errors="coerce").notna().mean() >= 0.8:
+            continue
+        parsed = _parse_date_series(df[column], allow_excel_serial=False)
         score = float(parsed.notna().mean())
         if score >= 0.6:
             scores.append((column, score))
@@ -136,6 +139,8 @@ def _detect_numeric_columns(
     for column in columns:
         if column in excluded:
             continue
+        if any(keyword in column.lower() for keyword in INDEX_KEYWORDS):
+            continue
         numeric = pd.to_numeric(df[column], errors="coerce")
         if numeric.notna().mean() >= 0.6:
             numeric_columns.append(column)
@@ -160,7 +165,7 @@ def format_parameters(
         raise ColumnDetectionError(f"参数列不存在：{', '.join(missing)}")
 
     result = pd.DataFrame()
-    parsed_dates = pd.to_datetime(df[date_column], errors="coerce")
+    parsed_dates = _parse_date_series(df[date_column], allow_excel_serial=True)
     if parsed_dates.isna().all():
         raise ColumnDetectionError("日期列无法解析为有效日期。")
 
@@ -171,3 +176,17 @@ def format_parameters(
     for column in parameter_columns:
         result[column] = pd.to_numeric(df[column], errors="coerce")
     return result
+
+
+def _parse_date_series(series: pd.Series, allow_excel_serial: bool) -> pd.Series:
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return pd.to_datetime(series, errors="coerce")
+    numeric = pd.to_numeric(series, errors="coerce")
+    numeric_ratio = float(numeric.notna().mean())
+    if allow_excel_serial and numeric_ratio >= 0.8:
+        valid = numeric.dropna()
+        if not valid.empty and valid.between(20000, 80000).mean() >= 0.8:
+            return pd.to_datetime(numeric, unit="D", origin="1899-12-30", errors="coerce")
+    if numeric_ratio >= 0.8:
+        return pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    return pd.to_datetime(series, errors="coerce")
