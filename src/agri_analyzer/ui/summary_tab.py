@@ -21,7 +21,8 @@ from src.agri_analyzer.core.summary import (
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
-    plot_treatment_summary,
+    plot_treatment_distribution,
+    plot_weekly_trend,
     summarize_with_outliers,
 )
 from src.agri_analyzer.models.pandas_table_model import PandasTableModel
@@ -42,13 +43,16 @@ class SummaryTab(QWidget):
         self.error_combo = QComboBox()
         self.error_combo.addItems(["SEM", "SD"])
         self.error_combo.setEnabled(False)
+        self.error_combo.setVisible(False)
 
         self.refresh_button = QPushButton("生成统计表")
         self.export_table_button = QPushButton("导出统计表 XLSX")
-        self.export_plot_button = QPushButton("导出图表")
+        self.export_plot_button = QPushButton("导出日期趋势图")
+        self.export_distribution_button = QPushButton("导出处理分布图")
         self.refresh_button.setEnabled(False)
         self.export_table_button.setEnabled(False)
         self.export_plot_button.setEnabled(False)
+        self.export_distribution_button.setEnabled(False)
 
         self.table_model = PandasTableModel()
         self.table_view = QTableView()
@@ -59,11 +63,14 @@ class SummaryTab(QWidget):
         top_layout = QHBoxLayout()
         top_layout.addWidget(QLabel("参数"))
         top_layout.addWidget(self.parameter_combo)
-        top_layout.addWidget(QLabel("误差线"))
+        self.error_label = QLabel("误差线")
+        self.error_label.setVisible(False)
+        top_layout.addWidget(self.error_label)
         top_layout.addWidget(self.error_combo)
         top_layout.addWidget(self.refresh_button)
         top_layout.addWidget(self.export_table_button)
         top_layout.addWidget(self.export_plot_button)
+        top_layout.addWidget(self.export_distribution_button)
         top_layout.addStretch()
 
         layout = QVBoxLayout(self)
@@ -75,6 +82,7 @@ class SummaryTab(QWidget):
         self.refresh_button.clicked.connect(self.refresh_summary)
         self.export_table_button.clicked.connect(self.export_table)
         self.export_plot_button.clicked.connect(self.export_plot)
+        self.export_distribution_button.clicked.connect(self.export_distribution_plot)
 
     def set_formatted_data(self, dataframe: pd.DataFrame) -> None:
         self.formatted_df = dataframe.copy()
@@ -90,6 +98,7 @@ class SummaryTab(QWidget):
         self.refresh_button.setEnabled(has_parameters)
         self.export_table_button.setEnabled(False)
         self.export_plot_button.setEnabled(False)
+        self.export_distribution_button.setEnabled(False)
 
         if not has_parameters:
             self.summary_df = None
@@ -118,6 +127,7 @@ class SummaryTab(QWidget):
         self.status_label.setText(f"已生成参数“{parameter}”的数据情况统计，已剔除离群值 {outlier_count} 个。")
         self.export_table_button.setEnabled(True)
         self.export_plot_button.setEnabled(True)
+        self.export_distribution_button.setEnabled(True)
 
     def export_table(self) -> None:
         if self.summary_df is None:
@@ -156,7 +166,7 @@ class SummaryTab(QWidget):
         QMessageBox.information(self, "导出完成", f"已导出到：{output_path}")
 
     def export_plot(self) -> None:
-        if self.summary_df is None:
+        if self.summary_df is None or self.formatted_df is None:
             QMessageBox.warning(self, "无可导出图表", "请先生成统计表。")
             return
 
@@ -171,15 +181,42 @@ class SummaryTab(QWidget):
             return
 
         try:
-            figure = plot_treatment_summary(
-                self.summary_df,
+            figure = plot_weekly_trend(
+                self.formatted_df,
                 parameter,
-                error=self.error_combo.currentText().lower(),
                 output_path=path,
             )
             figure.clear()
         except Exception as exc:
             QMessageBox.critical(self, "导出失败", f"导出图表失败：{exc}")
+            return
+
+        QMessageBox.information(self, "导出完成", f"已导出到：{Path(path)}")
+
+    def export_distribution_plot(self) -> None:
+        if self.summary_df is None or self.formatted_df is None:
+            QMessageBox.warning(self, "无可导出图表", "请先生成统计表。")
+            return
+
+        parameter = self.parameter_combo.currentText() or "summary"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出处理分布图",
+            str(Path("outputs") / f"{parameter}_distribution.png"),
+            "PNG 图片 (*.png);;PDF 文件 (*.pdf);;TIFF 图片 (*.tif *.tiff)",
+        )
+        if not path:
+            return
+
+        try:
+            figure = plot_treatment_distribution(
+                self.formatted_df,
+                parameter,
+                output_path=path,
+            )
+            figure.clear()
+        except Exception as exc:
+            QMessageBox.critical(self, "导出失败", f"导出处理分布图失败：{exc}")
             return
 
         QMessageBox.information(self, "导出完成", f"已导出到：{Path(path)}")
