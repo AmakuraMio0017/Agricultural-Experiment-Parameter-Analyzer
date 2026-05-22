@@ -72,3 +72,30 @@
 
 - `python -m compileall main.py src tests`：通过。
 - `python -m pytest`：18 passed。
+
+## [0.2.2] - 2026-05-22
+
+### 新增
+
+- 新增 `docs/chart-style-guide.md`，沉淀模块二图表样式、误差线、y 轴范围、离群值处理口径与模块三显著性图表扩展规范。
+
+## [0.3.0] - 2026-05-22
+
+### 新增
+
+- 实现模块三“显著水平判断”，复用模块一格式化结果和模块二离群值剔除口径。
+- 两组数据默认使用 Welch t-test，并在显著性图表中添加星号标注。
+- 多组数据默认使用 one-way ANOVA + Tukey HSD，并在显著性图表中添加字母分组。
+- 新增模块三显著性结果表预览、`.xlsx` 导出和科研风格图表导出。
+- 模块三图表遵循 `docs/chart-style-guide.md`：灰度柱状图、4:3、300 dpi、柱宽 0.4、默认 SEM、三位有效数字。
+- 新增模块三核心逻辑、GUI 流程和真实样例数据贯通测试。
+
+### 变更
+
+- 模块一完成参数格式化后，同时解锁模块二和模块三。
+- README 更新模块二、模块三当前功能状态。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：26 passed。
