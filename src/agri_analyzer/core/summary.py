@@ -255,6 +255,7 @@ def plot_weekly_trend(
     colors = _gray_palette(len(treatments))
     markers = ("o", "s", "^", "D", "v", "P", "X")
     scatter_offsets = _scatter_offsets(len(treatments))
+    y_jitter = _jitter_amplitude(cleaned[parameter].to_numpy(dtype=float))
 
     fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=300)
     for index, treatment in enumerate(treatments):
@@ -263,9 +264,13 @@ def plot_weekly_trend(
         color = colors[index]
         marker = markers[index % len(markers)]
         scatter_x = treatment_data[WEEK_COLUMN].to_numpy(dtype=float) + scatter_offsets[index]
+        scatter_y = (
+            treatment_data[parameter].to_numpy(dtype=float)
+            + _deterministic_offsets(len(treatment_data), y_jitter)
+        )
         ax.scatter(
             scatter_x,
-            treatment_data[parameter].to_numpy(dtype=float),
+            scatter_y,
             s=18,
             marker=marker,
             facecolors="white",
@@ -296,6 +301,65 @@ def plot_weekly_trend(
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
     ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+
+    if output_path is not None:
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output, dpi=300, bbox_inches="tight")
+    return fig
+
+
+def plot_treatment_distribution(
+    df: pd.DataFrame,
+    parameter: str,
+    output_path: str | Path | None = None,
+    exclude_outliers: bool = True,
+):
+    import matplotlib.pyplot as plt
+
+    cleaned = clean_parameter_data(df, parameter, exclude_outliers=exclude_outliers)
+    _configure_matplotlib_fonts(plt)
+    treatments = cleaned[TREATMENT_COLUMN].astype(str).drop_duplicates().tolist()
+    colors = _gray_palette(len(treatments))
+    markers = ("o", "s", "^", "D", "v", "P", "X")
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=300)
+    all_y_values: list[float] = []
+    for index, treatment in enumerate(treatments):
+        treatment_data = cleaned[cleaned[TREATMENT_COLUMN].astype(str) == treatment]
+        values = treatment_data[parameter].to_numpy(dtype=float)
+        all_y_values.extend(values.tolist())
+        density_counts = _density_counts(values)
+        x_values = np.full(len(values), index + 1, dtype=float) + _deterministic_offsets(
+            len(values),
+            0.22,
+        )
+        for density in sorted(set(density_counts)):
+            mask = density_counts == density
+            ax.scatter(
+                x_values[mask],
+                values[mask],
+                s=min(14 + density * 8, 70),
+                marker=markers[index % len(markers)],
+                facecolors=colors[index],
+                edgecolors="black",
+                linewidths=0.4,
+                alpha=min(0.3 + density * 0.08, 0.85),
+                label=f"{treatment} 原始点" if density == density_counts[0] else None,
+            )
+
+    positions = np.arange(1, len(treatments) + 1, dtype=float)
+    ax.set_xlim(0.5, len(treatments) + 0.5)
+    ax.set_ylim(*_padded_value_ylim(np.array(all_y_values, dtype=float)))
+    ax.set_xticks(positions)
+    ax.set_xticklabels(treatments)
+    ax.set_xlabel(TREATMENT_COLUMN)
+    ax.set_ylabel(parameter)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", color="0.88", linewidth=0.6)
+    ax.set_axisbelow(True)
     fig.tight_layout()
 
     if output_path is not None:
@@ -455,6 +519,36 @@ def _scatter_offsets(count: int) -> np.ndarray:
         return np.array([0.0])
     max_offset = 0.08
     return np.linspace(-max_offset, max_offset, count)
+
+
+def _deterministic_offsets(count: int, amplitude: float) -> np.ndarray:
+    if count <= 1 or amplitude == 0:
+        return np.zeros(count)
+    base = np.linspace(-amplitude, amplitude, count)
+    order = np.arange(count)
+    shuffled = (order * 7) % count
+    return base[shuffled]
+
+
+def _jitter_amplitude(values: np.ndarray) -> float:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return 0.0
+    span = float(np.max(finite) - np.min(finite))
+    if span == 0:
+        return max(abs(float(finite[0])) * 0.005, 0.02)
+    return span * 0.008
+
+
+def _density_counts(values: np.ndarray) -> np.ndarray:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return np.ones(len(values), dtype=int)
+    span = float(np.max(finite) - np.min(finite))
+    bin_width = max(span / 40, 0.1)
+    bins = np.round(values / bin_width).astype(int)
+    counts = pd.Series(bins).map(pd.Series(bins).value_counts()).to_numpy(dtype=int)
+    return counts
 
 
 def _padded_value_ylim(values: np.ndarray) -> tuple[float, float]:

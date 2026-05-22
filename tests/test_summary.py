@@ -9,6 +9,7 @@ from src.agri_analyzer.core.summary import (
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
+    plot_treatment_distribution,
     plot_weekly_trend,
     plot_treatment_summary,
     round_significant,
@@ -49,6 +50,18 @@ def trend_sample() -> pd.DataFrame:
             "isoweek": [14, 14, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16],
             "处理方式": ["对照", "对照", "处理", "处理"] * 3,
             "单果重": [10, 12, 14, 16, 11, 13, 15, 17, 12, 14, 18, 100],
+        }
+    )
+
+
+def distribution_sample() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "序号": range(1, 13),
+            "日期": pd.to_datetime(["2026-04-01"] * 12).date,
+            "isoweek": [14] * 12,
+            "处理方式": ["对照"] * 6 + ["处理"] * 6,
+            "单果重": [10, 10, 10, 11, 12, 13, 15, 15, 16, 17, 18, 19],
         }
     )
 
@@ -169,11 +182,34 @@ def test_weekly_trend_plot_offsets_scatter_but_keeps_mean_lines_on_isoweek(tmp_p
 
     assert output.exists()
     assert scatter_x_values == {13.92, 14.08, 14.92, 15.08, 15.92, 16.08}
+    assert any(abs(value - round(value)) > 0 for value in scatter_y_values)
     assert 100.0 not in scatter_y_values
     assert any("对照 均值" == label for label in line_labels)
     assert any("处理 均值" == label for label in line_labels)
     assert [14, 15, 16] in line_x_values
     assert ax.get_xlabel() == "isoweek"
+    figure.clear()
+
+
+def test_treatment_distribution_plot_uses_treatment_axis_and_density_sizes(tmp_path: Path) -> None:
+    output = tmp_path / "distribution.png"
+
+    figure = plot_treatment_distribution(distribution_sample(), "单果重", output_path=output)
+    ax = figure.axes[0]
+
+    scatter_sizes = []
+    scatter_x_values = []
+    for collection in ax.collections:
+        scatter_sizes.extend(float(size) for size in collection.get_sizes())
+        offsets = collection.get_offsets()
+        scatter_x_values.extend(float(item) for item in offsets[:, 0])
+
+    assert output.exists()
+    assert [tick.get_text() for tick in ax.get_xticklabels()] == ["对照", "处理"]
+    assert ax.get_xlabel() == "处理方式"
+    assert min(scatter_x_values) < 1
+    assert max(scatter_x_values) > 2
+    assert max(scatter_sizes) > min(scatter_sizes)
     figure.clear()
 
 
