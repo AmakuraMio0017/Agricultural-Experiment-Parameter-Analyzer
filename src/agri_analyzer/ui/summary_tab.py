@@ -19,8 +19,10 @@ from PySide6.QtWidgets import (
 from src.agri_analyzer.core.summary import (
     SummaryError,
     detect_parameter_columns,
+    format_outliers_for_output,
+    format_summary_for_output,
     plot_treatment_summary,
-    summarize_by_treatment,
+    summarize_with_outliers,
 )
 from src.agri_analyzer.models.pandas_table_model import PandasTableModel
 
@@ -30,6 +32,7 @@ class SummaryTab(QWidget):
         super().__init__()
         self.formatted_df: pd.DataFrame | None = None
         self.summary_df: pd.DataFrame | None = None
+        self.outliers_df: pd.DataFrame | None = None
 
         self.status_label = QLabel("请先在模块一完成参数格式化。")
         self.status_label.setAlignment(Qt.AlignLeft)
@@ -103,17 +106,16 @@ class SummaryTab(QWidget):
 
         parameter = self.parameter_combo.currentText()
         try:
-            self.summary_df = summarize_by_treatment(self.formatted_df, parameter)
+            self.summary_df, self.outliers_df = summarize_with_outliers(self.formatted_df, parameter)
         except SummaryError as exc:
             QMessageBox.warning(self, "统计失败", str(exc))
             return
 
-        preview = self.summary_df.copy()
-        numeric_columns = preview.select_dtypes(include="number").columns
-        preview[numeric_columns] = preview[numeric_columns].round(4)
+        preview = format_summary_for_output(self.summary_df)
         self.table_model.set_dataframe(preview)
         self.table_view.resizeColumnsToContents()
-        self.status_label.setText(f"已生成参数“{parameter}”的数据情况统计。")
+        outlier_count = 0 if self.outliers_df is None else len(self.outliers_df)
+        self.status_label.setText(f"已生成参数“{parameter}”的数据情况统计，已剔除离群值 {outlier_count} 个。")
         self.export_table_button.setEnabled(True)
         self.export_plot_button.setEnabled(True)
 
@@ -135,7 +137,18 @@ class SummaryTab(QWidget):
         try:
             output_path = Path(path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            self.summary_df.to_excel(output_path, index=False)
+            outliers = self.outliers_df if self.outliers_df is not None else pd.DataFrame()
+            with pd.ExcelWriter(output_path) as writer:
+                format_summary_for_output(self.summary_df).to_excel(
+                    writer,
+                    sheet_name="summary",
+                    index=False,
+                )
+                format_outliers_for_output(outliers).to_excel(
+                    writer,
+                    sheet_name="outliers",
+                    index=False,
+                )
         except Exception as exc:
             QMessageBox.critical(self, "导出失败", f"导出统计表失败：{exc}")
             return

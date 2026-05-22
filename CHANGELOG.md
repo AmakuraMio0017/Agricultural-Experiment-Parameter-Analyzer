@@ -56,3 +56,19 @@
 - `python -m compileall main.py src tests`：通过。
 - `python -m pytest`：12 passed。
 - `QT_QPA_PLATFORM=offscreen` 下实例化主窗口：通过，模块二加载为 `SummaryTab`。
+
+## [0.2.1] - 2026-05-22
+
+### 变更
+
+- 模块二统计表预览与导出统一按三位有效数字四舍五入，`n` 与 `序号` 等 ID/计数字段保持整数。
+- 模块二新增组内 IQR 1.5 倍离群值识别，统计和图表默认剔除离群值，并在导出 Excel 的 `outliers` sheet 记录离群数据 ID、原始值、上下限与判定规则。
+- 模块二图表柱体宽度调整为 0.4，y 轴根据 `mean ± error` 自动设置上下限并保留约 20% 富余。
+- 模块二两组柱状图改为 x 轴左边界、两组柱中心和右边界等距分布，并在误差线上方标注 `mean ± error`。
+- 模块一格式化结果中的 `序号` 优先沿用原始数据源中的序号/编号/id 列，用于后续异常值定位。
+- 使用 `TestDataSource.xlsx` 重新生成模块二输出，识别单果重离群值 4 个，剔除后处理组 `n=72`、对照组 `n=77`。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：18 passed。

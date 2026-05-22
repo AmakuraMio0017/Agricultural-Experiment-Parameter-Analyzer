@@ -83,3 +83,18 @@ def test_excel_serial_date_column_is_detected_and_formatted() -> None:
     assert detection.parameter_columns == ["单果重"]
     assert str(formatted.loc[0, "日期"]) == "2026-03-25"
     assert formatted.loc[0, "isoweek"] == 13
+
+
+def test_format_parameters_preserves_source_id_column_when_available() -> None:
+    df = pd.DataFrame(
+        {
+            "数据序号": [101, 205],
+            "采收日": [46106, 46106],
+            "处理情况": ["处理", "对照"],
+            "单果重": [12.78, 13.2],
+        }
+    )
+
+    formatted = format_parameters(df, "采收日", "处理情况", ["单果重"])
+
+    assert formatted["序号"].tolist() == [101, 205]

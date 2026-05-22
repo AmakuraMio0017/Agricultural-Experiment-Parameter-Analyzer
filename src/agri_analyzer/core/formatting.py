@@ -169,7 +169,11 @@ def format_parameters(
     if parsed_dates.isna().all():
         raise ColumnDetectionError("日期列无法解析为有效日期。")
 
-    result["序号"] = range(1, len(df) + 1)
+    id_column = _detect_index_column(
+        [str(column) for column in df.columns],
+        exclude={date_column, treatment_column, *parameter_columns},
+    )
+    result["序号"] = df[id_column] if id_column else range(1, len(df) + 1)
     result["日期"] = parsed_dates.dt.date
     result["isoweek"] = parsed_dates.dt.isocalendar().week.astype("Int64")
     result["处理方式"] = df[treatment_column].astype(str)
@@ -190,3 +194,13 @@ def _parse_date_series(series: pd.Series, allow_excel_serial: bool) -> pd.Series
     if numeric_ratio >= 0.8:
         return pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
     return pd.to_datetime(series, errors="coerce")
+
+
+def _detect_index_column(columns: list[str], exclude: Iterable[str | None]) -> str | None:
+    excluded = {column for column in exclude if column}
+    for column in columns:
+        if column in excluded:
+            continue
+        if any(keyword in column.lower() for keyword in INDEX_KEYWORDS):
+            return column
+    return None
