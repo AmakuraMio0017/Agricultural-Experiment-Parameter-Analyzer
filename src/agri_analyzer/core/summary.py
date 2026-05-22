@@ -254,6 +254,7 @@ def plot_weekly_trend(
     treatments = cleaned[TREATMENT_COLUMN].astype(str).drop_duplicates().tolist()
     colors = _gray_palette(len(treatments))
     markers = ("o", "s", "^", "D", "v", "P", "X")
+    scatter_offsets = _scatter_offsets(len(treatments))
 
     fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=300)
     for index, treatment in enumerate(treatments):
@@ -261,8 +262,9 @@ def plot_weekly_trend(
         treatment_means = means[means[TREATMENT_COLUMN].astype(str) == treatment].sort_values(WEEK_COLUMN)
         color = colors[index]
         marker = markers[index % len(markers)]
+        scatter_x = treatment_data[WEEK_COLUMN].to_numpy(dtype=float) + scatter_offsets[index]
         ax.scatter(
-            treatment_data[WEEK_COLUMN].to_numpy(dtype=float),
+            scatter_x,
             treatment_data[parameter].to_numpy(dtype=float),
             s=18,
             marker=marker,
@@ -446,6 +448,13 @@ def _padded_x_limits(values: np.ndarray) -> tuple[float, float]:
         return minimum - 0.5, maximum + 0.5
     padding = max((maximum - minimum) * 0.05, 0.5)
     return minimum - padding, maximum + padding
+
+
+def _scatter_offsets(count: int) -> np.ndarray:
+    if count <= 1:
+        return np.array([0.0])
+    max_offset = 0.08
+    return np.linspace(-max_offset, max_offset, count)
 
 
 def _padded_value_ylim(values: np.ndarray) -> tuple[float, float]:

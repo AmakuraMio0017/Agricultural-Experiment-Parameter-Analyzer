@@ -151,7 +151,7 @@ def test_weekly_treatment_means_groups_by_isoweek_and_treatment() -> None:
     assert treated_week_15["n"] == 2
 
 
-def test_weekly_trend_plot_uses_isoweek_scatter_and_mean_lines_without_jitter(tmp_path: Path) -> None:
+def test_weekly_trend_plot_offsets_scatter_but_keeps_mean_lines_on_isoweek(tmp_path: Path) -> None:
     output = tmp_path / "weekly_trend.png"
 
     figure = plot_weekly_trend(trend_sample(), "单果重", output_path=output)
@@ -168,7 +168,7 @@ def test_weekly_trend_plot_uses_isoweek_scatter_and_mean_lines_without_jitter(tm
     line_x_values = [list(line.get_xdata()) for line in ax.lines]
 
     assert output.exists()
-    assert scatter_x_values == {14.0, 15.0, 16.0}
+    assert scatter_x_values == {13.92, 14.08, 14.92, 15.08, 15.92, 16.08}
     assert 100.0 not in scatter_y_values
     assert any("对照 均值" == label for label in line_labels)
     assert any("处理 均值" == label for label in line_labels)
