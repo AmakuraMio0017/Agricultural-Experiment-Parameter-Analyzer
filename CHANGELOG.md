@@ -99,3 +99,18 @@
 
 - `python -m compileall main.py src tests`：通过。
 - `python -m pytest`：26 passed。
+
+## [0.3.1] - 2026-05-22
+
+### 变更
+
+- 模块二导出图表从处理组柱状图调整为基于 `isoweek` 的散点-均值折线趋势图，用于展示数据分布和时间变化。
+- 模块二趋势图按处理方式绘制原始散点，并按 `处理方式 + isoweek` 均值点连接趋势线；同一周内不同处理不做横向错位。
+- 模块三继续保留柱状图、误差线和显著性星号/字母分组，避免模块二趋势图改造影响显著性图。
+- 更新 `docs/chart-style-guide.md`，明确模块二使用日期趋势散点图、模块三使用显著性柱状图。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：28 passed。
+- 使用 `TestDataSource.xlsx` 重新生成模块二趋势图，x 轴为 `isoweek`，输出包含处理组和对照组均值趋势线。

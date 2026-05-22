@@ -21,7 +21,7 @@ from src.agri_analyzer.core.summary import (
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
-    plot_treatment_summary,
+    plot_weekly_trend,
     summarize_with_outliers,
 )
 from src.agri_analyzer.models.pandas_table_model import PandasTableModel
@@ -42,6 +42,7 @@ class SummaryTab(QWidget):
         self.error_combo = QComboBox()
         self.error_combo.addItems(["SEM", "SD"])
         self.error_combo.setEnabled(False)
+        self.error_combo.setVisible(False)
 
         self.refresh_button = QPushButton("生成统计表")
         self.export_table_button = QPushButton("导出统计表 XLSX")
@@ -59,7 +60,9 @@ class SummaryTab(QWidget):
         top_layout = QHBoxLayout()
         top_layout.addWidget(QLabel("参数"))
         top_layout.addWidget(self.parameter_combo)
-        top_layout.addWidget(QLabel("误差线"))
+        self.error_label = QLabel("误差线")
+        self.error_label.setVisible(False)
+        top_layout.addWidget(self.error_label)
         top_layout.addWidget(self.error_combo)
         top_layout.addWidget(self.refresh_button)
         top_layout.addWidget(self.export_table_button)
@@ -156,7 +159,7 @@ class SummaryTab(QWidget):
         QMessageBox.information(self, "导出完成", f"已导出到：{output_path}")
 
     def export_plot(self) -> None:
-        if self.summary_df is None:
+        if self.summary_df is None or self.formatted_df is None:
             QMessageBox.warning(self, "无可导出图表", "请先生成统计表。")
             return
 
@@ -171,10 +174,9 @@ class SummaryTab(QWidget):
             return
 
         try:
-            figure = plot_treatment_summary(
-                self.summary_df,
+            figure = plot_weekly_trend(
+                self.formatted_df,
                 parameter,
-                error=self.error_combo.currentText().lower(),
                 output_path=path,
             )
             figure.clear()

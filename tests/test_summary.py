@@ -9,10 +9,12 @@ from src.agri_analyzer.core.summary import (
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
+    plot_weekly_trend,
     plot_treatment_summary,
     round_significant,
     summarize_by_treatment,
     summarize_with_outliers,
+    weekly_treatment_means,
 )
 
 
@@ -35,6 +37,18 @@ def formatted_sample() -> pd.DataFrame:
             "处理方式": ["对照", "对照", "处理", "处理", "处理", "处理", "单样本"],
             "单果重": [10, 14, 15, 17, 18, 100, 20],
             "备注": ["a", "b", "c", "d", "e", "outlier", "g"],
+        }
+    )
+
+
+def trend_sample() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "序号": range(1, 13),
+            "日期": pd.to_datetime(["2026-04-01"] * 4 + ["2026-04-08"] * 4 + ["2026-04-15"] * 4).date,
+            "isoweek": [14, 14, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16],
+            "处理方式": ["对照", "对照", "处理", "处理"] * 3,
+            "单果重": [10, 12, 14, 16, 11, 13, 15, 17, 12, 14, 18, 100],
         }
     )
 
@@ -120,6 +134,47 @@ def test_output_formatters_round_summary_and_keep_empty_outlier_columns() -> Non
         "判定规则",
     ]
     assert formatted_outliers.empty
+
+
+def test_weekly_treatment_means_groups_by_isoweek_and_treatment() -> None:
+    cleaned = trend_sample().iloc[:-1].copy()
+    means = weekly_treatment_means(cleaned, "单果重")
+
+    treated_week_15 = means[
+        (means["处理方式"] == "处理")
+        & (means["isoweek"] == 15)
+    ].iloc[0]
+
+    assert set(means["isoweek"]) == {14, 15, 16}
+    assert set(means["处理方式"]) == {"对照", "处理"}
+    assert treated_week_15["mean"] == 16
+    assert treated_week_15["n"] == 2
+
+
+def test_weekly_trend_plot_uses_isoweek_scatter_and_mean_lines_without_jitter(tmp_path: Path) -> None:
+    output = tmp_path / "weekly_trend.png"
+
+    figure = plot_weekly_trend(trend_sample(), "单果重", output_path=output)
+    ax = figure.axes[0]
+
+    scatter_x_values = set()
+    scatter_y_values = []
+    for collection in ax.collections:
+        offsets = collection.get_offsets()
+        scatter_x_values.update(float(item) for item in offsets[:, 0])
+        scatter_y_values.extend(float(item) for item in offsets[:, 1])
+
+    line_labels = [line.get_label() for line in ax.lines]
+    line_x_values = [list(line.get_xdata()) for line in ax.lines]
+
+    assert output.exists()
+    assert scatter_x_values == {14.0, 15.0, 16.0}
+    assert 100.0 not in scatter_y_values
+    assert any("对照 均值" == label for label in line_labels)
+    assert any("处理 均值" == label for label in line_labels)
+    assert [14, 15, 16] in line_x_values
+    assert ax.get_xlabel() == "isoweek"
+    figure.clear()
 
 
 def test_plot_treatment_summary_writes_file_and_uses_narrow_bars_and_padded_ylim(tmp_path: Path) -> None:

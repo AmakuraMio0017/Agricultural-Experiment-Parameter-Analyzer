@@ -190,6 +190,119 @@ def format_significant_text(value, digits: int = 3) -> str:
     return f"{rounded:g}"
 
 
+def clean_parameter_data(
+    df: pd.DataFrame,
+    parameter: str,
+    exclude_outliers: bool = True,
+) -> pd.DataFrame:
+    _validate_summary_input(df, parameter)
+    if WEEK_COLUMN not in df.columns:
+        raise SummaryError(f"缺少固定列：{WEEK_COLUMN}")
+
+    columns = [column for column in FIXED_COLUMNS if column in df.columns] + [parameter]
+    working = df[columns].copy()
+    working[parameter] = pd.to_numeric(working[parameter], errors="coerce")
+    working[WEEK_COLUMN] = pd.to_numeric(working[WEEK_COLUMN], errors="coerce")
+    working = working.dropna(subset=[parameter, WEEK_COLUMN])
+
+    if exclude_outliers:
+        outliers = detect_outliers(df, parameter)
+        if not outliers.empty and ID_COLUMN in working.columns:
+            outlier_ids = set(outliers[ID_COLUMN].astype(str))
+            working = working[~working[ID_COLUMN].astype(str).isin(outlier_ids)]
+
+    if working.empty:
+        raise SummaryError(f"参数列没有可绘图的有效数据：{parameter}")
+    return working
+
+
+def weekly_treatment_means(df: pd.DataFrame, parameter: str) -> pd.DataFrame:
+    _validate_summary_input(df, parameter)
+    if WEEK_COLUMN not in df.columns:
+        raise SummaryError(f"缺少固定列：{WEEK_COLUMN}")
+
+    working = df.copy()
+    working[parameter] = pd.to_numeric(working[parameter], errors="coerce")
+    working[WEEK_COLUMN] = pd.to_numeric(working[WEEK_COLUMN], errors="coerce")
+    working = working.dropna(subset=[parameter, WEEK_COLUMN])
+    if working.empty:
+        return pd.DataFrame(columns=[WEEK_COLUMN, TREATMENT_COLUMN, "mean", "n"])
+
+    means = (
+        working.groupby([TREATMENT_COLUMN, WEEK_COLUMN], sort=True)[parameter]
+        .agg(mean="mean", n="count")
+        .reset_index()
+        .sort_values([TREATMENT_COLUMN, WEEK_COLUMN])
+    )
+    return means[[WEEK_COLUMN, TREATMENT_COLUMN, "mean", "n"]]
+
+
+def plot_weekly_trend(
+    df: pd.DataFrame,
+    parameter: str,
+    output_path: str | Path | None = None,
+    exclude_outliers: bool = True,
+):
+    import matplotlib.pyplot as plt
+
+    cleaned = clean_parameter_data(df, parameter, exclude_outliers=exclude_outliers)
+    means = weekly_treatment_means(cleaned, parameter)
+    if means.empty:
+        raise SummaryError(f"参数列没有可绘图的有效数据：{parameter}")
+
+    _configure_matplotlib_fonts(plt)
+    treatments = cleaned[TREATMENT_COLUMN].astype(str).drop_duplicates().tolist()
+    colors = _gray_palette(len(treatments))
+    markers = ("o", "s", "^", "D", "v", "P", "X")
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=300)
+    for index, treatment in enumerate(treatments):
+        treatment_data = cleaned[cleaned[TREATMENT_COLUMN].astype(str) == treatment]
+        treatment_means = means[means[TREATMENT_COLUMN].astype(str) == treatment].sort_values(WEEK_COLUMN)
+        color = colors[index]
+        marker = markers[index % len(markers)]
+        ax.scatter(
+            treatment_data[WEEK_COLUMN].to_numpy(dtype=float),
+            treatment_data[parameter].to_numpy(dtype=float),
+            s=18,
+            marker=marker,
+            facecolors="white",
+            edgecolors=color,
+            linewidths=0.8,
+            alpha=0.75,
+            label=f"{treatment} 原始点",
+        )
+        ax.plot(
+            treatment_means[WEEK_COLUMN].to_numpy(dtype=float),
+            treatment_means["mean"].to_numpy(dtype=float),
+            marker=marker,
+            color=color,
+            linewidth=1.2,
+            markersize=4,
+            label=f"{treatment} 均值",
+        )
+
+    week_values = cleaned[WEEK_COLUMN].to_numpy(dtype=float)
+    y_values = cleaned[parameter].to_numpy(dtype=float)
+    ax.set_xlim(*_padded_x_limits(week_values))
+    ax.set_ylim(*_padded_value_ylim(y_values))
+    ax.set_xticks(sorted(np.unique(week_values).astype(int).tolist()))
+    ax.set_xlabel(WEEK_COLUMN)
+    ax.set_ylabel(parameter)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", color="0.88", linewidth=0.6)
+    ax.set_axisbelow(True)
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+
+    if output_path is not None:
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output, dpi=300, bbox_inches="tight")
+    return fig
+
+
 def plot_treatment_summary(
     summary_df: pd.DataFrame,
     parameter: str,
@@ -321,6 +434,32 @@ def _label_padding(means: np.ndarray, errors: np.ndarray) -> float:
     if span == 0:
         return max(abs(upper) * 0.03, 0.05)
     return span * 0.04
+
+
+def _padded_x_limits(values: np.ndarray) -> tuple[float, float]:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return 0.0, 1.0
+    minimum = float(np.min(finite))
+    maximum = float(np.max(finite))
+    if minimum == maximum:
+        return minimum - 0.5, maximum + 0.5
+    padding = max((maximum - minimum) * 0.05, 0.5)
+    return minimum - padding, maximum + padding
+
+
+def _padded_value_ylim(values: np.ndarray) -> tuple[float, float]:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return 0.0, 1.0
+    minimum = float(np.min(finite))
+    maximum = float(np.max(finite))
+    span = maximum - minimum
+    if span == 0:
+        padding = max(abs(maximum) * 0.2, 1.0)
+    else:
+        padding = span * 0.2
+    return minimum - padding, maximum + padding
 
 
 def _gray_palette(count: int) -> list[str]:
