@@ -330,6 +330,7 @@ def plot_treatment_distribution(
         treatment_data = cleaned[cleaned[TREATMENT_COLUMN].astype(str) == treatment]
         values = treatment_data[parameter].to_numpy(dtype=float)
         all_y_values.extend(values.tolist())
+        density_bins = _density_bins(values)
         density_counts = _density_counts(values)
         x_values = np.full(len(values), index + 1, dtype=float) + _deterministic_offsets(
             len(values),
@@ -348,9 +349,10 @@ def plot_treatment_distribution(
                 alpha=min(0.3 + density * 0.08, 0.85),
                 label=f"{treatment} 原始点" if density == density_counts[0] else None,
             )
+        _draw_density_strip(ax, index + 1.32, density_bins)
 
     positions = np.arange(1, len(treatments) + 1, dtype=float)
-    ax.set_xlim(0.5, len(treatments) + 0.5)
+    ax.set_xlim(0.5, len(treatments) + 0.85)
     ax.set_ylim(*_padded_value_ylim(np.array(all_y_values, dtype=float)))
     ax.set_xticks(positions)
     ax.set_xticklabels(treatments)
@@ -549,6 +551,100 @@ def _density_counts(values: np.ndarray) -> np.ndarray:
     bins = np.round(values / bin_width).astype(int)
     counts = pd.Series(bins).map(pd.Series(bins).value_counts()).to_numpy(dtype=int)
     return counts
+
+
+def _density_bins(values: np.ndarray, bin_count: int = 20) -> pd.DataFrame:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return pd.DataFrame(columns=["lower", "upper", "center", "count"])
+
+    minimum = float(np.min(finite))
+    maximum = float(np.max(finite))
+    if minimum == maximum:
+        padding = max(abs(minimum) * 0.01, 0.5)
+        minimum -= padding
+        maximum += padding
+
+    counts, edges = np.histogram(finite, bins=bin_count, range=(minimum, maximum))
+    lowers = edges[:-1]
+    uppers = edges[1:]
+    centers = (lowers + uppers) / 2
+    return pd.DataFrame(
+        {
+            "lower": lowers,
+            "upper": uppers,
+            "center": centers,
+            "count": counts,
+        }
+    )
+
+
+def _select_peak_density_bin(bins: pd.DataFrame, median: float) -> pd.Series:
+    non_empty = bins[bins["count"] > 0]
+    if non_empty.empty:
+        return bins.iloc[0]
+
+    max_count = non_empty["count"].max()
+    candidates = non_empty[non_empty["count"] == max_count].copy()
+    candidates["_distance_to_median"] = (candidates["center"] - median).abs()
+    return candidates.sort_values("_distance_to_median").iloc[0]
+
+
+def _draw_density_strip(
+    ax,
+    x_position: float,
+    bins: pd.DataFrame,
+    strip_width: float = 0.1,
+) -> None:
+    if bins.empty:
+        return
+
+    from matplotlib.patches import Rectangle
+
+    max_count = int(bins["count"].max())
+    if max_count <= 0:
+        return
+
+    for _, bin_row in bins.iterrows():
+        count = int(bin_row["count"])
+        if count <= 0:
+            gray = 0.94
+        else:
+            gray = 0.9 - 0.58 * (count / max_count)
+        rectangle = Rectangle(
+            (x_position - strip_width / 2, float(bin_row["lower"])),
+            strip_width,
+            float(bin_row["upper"] - bin_row["lower"]),
+            facecolor=str(max(0.18, min(0.94, gray))),
+            edgecolor="0.82",
+            linewidth=0.25,
+            zorder=1,
+        )
+        rectangle.set_gid("density_strip")
+        ax.add_patch(rectangle)
+
+    median = float(np.median(np.repeat(bins["center"].to_numpy(dtype=float), bins["count"].to_numpy(dtype=int))))
+    peak = _select_peak_density_bin(bins, median)
+    peak_y = float(peak["center"])
+    line_start = x_position - strip_width / 2
+    line_end = x_position + strip_width / 2
+    ax.plot(
+        [line_start, line_end],
+        [peak_y, peak_y],
+        color="black",
+        linewidth=0.7,
+        solid_capstyle="butt",
+        zorder=3,
+    )
+    ax.text(
+        x_position + strip_width * 0.8,
+        peak_y,
+        f"密集区 {format_significant_text(peak_y)}",
+        va="center",
+        ha="left",
+        fontsize=7,
+        color="0.15",
+    )
 
 
 def _padded_value_ylim(values: np.ndarray) -> tuple[float, float]:

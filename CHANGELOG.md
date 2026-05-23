@@ -118,3 +118,17 @@
 - `python -m compileall main.py src tests`：通过。
 - `python -m pytest`：28 passed。
 - 使用 `TestDataSource.xlsx` 重新生成模块二趋势图，x 轴为 `isoweek`，输出包含处理组和对照组均值趋势线。
+
+## [0.3.2] - 2026-05-23
+
+### 变更
+
+- 模块二处理分布图新增每个处理组右侧的竖向分箱密度条，按组内参数值分箱并用灰度深浅表达富集程度。
+- 密度条最密集区间新增短横线与 `密集区 {value}` 标注，数值沿用三位有效数字格式。
+- 处理分布图继续使用剔除离群值后的数据；密度条仅作为视觉辅助，不改变统计表、离群值报告或模块三显著性分析。
+- 更新 `docs/chart-style-guide.md`，补充分箱密度条的布局、归一化和标注规则。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：31 passed。

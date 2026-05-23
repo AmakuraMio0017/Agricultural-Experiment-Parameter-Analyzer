@@ -213,6 +213,35 @@ def test_treatment_distribution_plot_uses_treatment_axis_and_density_sizes(tmp_p
     figure.clear()
 
 
+def test_treatment_distribution_plot_draws_density_strips_and_peak_labels(tmp_path: Path) -> None:
+    output = tmp_path / "distribution_density.png"
+
+    figure = plot_treatment_distribution(distribution_sample(), "单果重", output_path=output)
+    ax = figure.axes[0]
+
+    density_patches = [patch for patch in ax.patches if patch.get_gid() == "density_strip"]
+    gray_values = [patch.get_facecolor()[0] for patch in density_patches]
+    labels = [text.get_text() for text in ax.texts]
+
+    assert output.exists()
+    assert len(density_patches) == 40
+    assert min(gray_values) < max(gray_values)
+    assert sum(label.startswith("密集区 ") for label in labels) == 2
+    assert ax.get_xlim()[1] > 2.5
+    figure.clear()
+
+
+def test_treatment_distribution_density_strip_excludes_outliers_by_default() -> None:
+    figure = plot_treatment_distribution(formatted_sample(), "单果重")
+    ax = figure.axes[0]
+
+    density_patches = [patch for patch in ax.patches if patch.get_gid() == "density_strip"]
+    density_tops = [patch.get_y() + patch.get_height() for patch in density_patches]
+
+    assert max(density_tops) < 30
+    figure.clear()
+
+
 def test_plot_treatment_summary_writes_file_and_uses_narrow_bars_and_padded_ylim(tmp_path: Path) -> None:
     summary = summarize_by_treatment(formatted_sample(), "单果重")
     output = tmp_path / "summary.png"
