@@ -1,4 +1,5 @@
 import math
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -9,6 +10,7 @@ from src.agri_analyzer.core.summary import (
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
+    OUTLIER_NOTE,
     plot_treatment_distribution,
     plot_weekly_trend,
     plot_treatment_summary,
@@ -188,6 +190,7 @@ def test_weekly_trend_plot_offsets_scatter_but_keeps_mean_lines_on_isoweek(tmp_p
     assert any("处理 均值" == label for label in line_labels)
     assert [14, 15, 16] in line_x_values
     assert ax.get_xlabel() == "isoweek"
+    assert OUTLIER_NOTE in [text.get_text() for text in ax.texts]
     figure.clear()
 
 
@@ -210,6 +213,7 @@ def test_treatment_distribution_plot_uses_treatment_axis_and_density_sizes(tmp_p
     assert min(scatter_x_values) < 1
     assert max(scatter_x_values) > 2
     assert max(scatter_sizes) > min(scatter_sizes)
+    assert OUTLIER_NOTE in [text.get_text() for text in ax.texts]
     figure.clear()
 
 
@@ -304,3 +308,17 @@ def test_example_data_source_can_flow_through_module_two() -> None:
 
     assert set(summary["处理方式"]) == {"处理", "对照"}
     assert "序号" in outliers.columns
+
+
+def test_summary_tab_no_longer_exposes_error_line_controls() -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from src.agri_analyzer.ui.summary_tab import SummaryTab
+
+    app = QApplication.instance() or QApplication([])
+    tab = SummaryTab()
+
+    assert app is not None
+    assert not hasattr(tab, "error_combo")
+    assert not hasattr(tab, "error_label")

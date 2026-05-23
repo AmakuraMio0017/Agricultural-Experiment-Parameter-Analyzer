@@ -13,6 +13,7 @@ WEEK_COLUMN = "isoweek"
 TREATMENT_COLUMN = "处理方式"
 FIXED_COLUMNS = (ID_COLUMN, DATE_COLUMN, WEEK_COLUMN, TREATMENT_COLUMN)
 CONTROL_LABELS = ("对照", "CK", "Control")
+OUTLIER_NOTE = "默认剔除离群值（IQR 1.5×）"
 OUTLIER_COLUMNS = (
     "参数",
     ID_COLUMN,
@@ -301,6 +302,8 @@ def plot_weekly_trend(
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
     ax.legend(frameon=False, fontsize=8)
+    if exclude_outliers:
+        _annotate_outlier_note(ax)
     fig.tight_layout()
 
     if output_path is not None:
@@ -362,6 +365,8 @@ def plot_treatment_distribution(
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
+    if exclude_outliers:
+        _annotate_outlier_note(ax)
     fig.tight_layout()
 
     if output_path is not None:
@@ -489,6 +494,19 @@ def _annotate_error_labels(
             va="bottom",
             fontsize=8,
         )
+
+
+def _annotate_outlier_note(ax) -> None:
+    ax.text(
+        0.99,
+        0.02,
+        OUTLIER_NOTE,
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=7,
+        color="0.25",
+    )
 
 
 def _label_padding(means: np.ndarray, errors: np.ndarray) -> float:
