@@ -9,7 +9,7 @@ from src.agri_analyzer.core.significance import (
     p_value_to_stars,
     tukey_letter_groups,
 )
-from src.agri_analyzer.core.summary import detect_parameter_columns
+from src.agri_analyzer.core.summary import OUTLIER_NOTE, detect_parameter_columns
 
 
 def two_group_frame() -> pd.DataFrame:
@@ -113,6 +113,22 @@ def test_two_group_significance_plot_writes_stars_and_uses_expected_layout(tmp_p
     assert ax.get_xlim() == (0.0, 3.0)
     assert round(ax.patches[0].get_width(), 2) == 0.4
     assert any(text.get_text() == "***" for text in ax.texts)
+    assert OUTLIER_NOTE in [text.get_text() for text in ax.texts]
+    figure.clear()
+
+
+def test_significance_plot_supports_sd_error_line(tmp_path: Path) -> None:
+    result = analyze_significance(two_group_frame(), "单果重")
+    output = tmp_path / "two_group_significance_sd.png"
+
+    figure = plot_significance_summary(result, "单果重", error="sd", output_path=output)
+    ax = figure.axes[0]
+    labels = [text.get_text() for text in ax.texts]
+
+    assert output.exists()
+    assert output.stat().st_size > 0
+    assert any("± 1.29" in label for label in labels)
+    assert OUTLIER_NOTE in labels
     figure.clear()
 
 
@@ -128,6 +144,7 @@ def test_multi_group_significance_plot_writes_letters(tmp_path: Path) -> None:
     assert output.stat().st_size > 0
     assert round(ax.patches[0].get_width(), 2) == 0.4
     assert set(result.annotations.values()).issubset(plotted_texts)
+    assert OUTLIER_NOTE in plotted_texts
     figure.clear()
 
 

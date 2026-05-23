@@ -40,10 +40,6 @@ class SummaryTab(QWidget):
 
         self.parameter_combo = QComboBox()
         self.parameter_combo.setEnabled(False)
-        self.error_combo = QComboBox()
-        self.error_combo.addItems(["SEM", "SD"])
-        self.error_combo.setEnabled(False)
-        self.error_combo.setVisible(False)
 
         self.refresh_button = QPushButton("生成统计表")
         self.export_table_button = QPushButton("导出统计表 XLSX")
@@ -63,10 +59,6 @@ class SummaryTab(QWidget):
         top_layout = QHBoxLayout()
         top_layout.addWidget(QLabel("参数"))
         top_layout.addWidget(self.parameter_combo)
-        self.error_label = QLabel("误差线")
-        self.error_label.setVisible(False)
-        top_layout.addWidget(self.error_label)
-        top_layout.addWidget(self.error_combo)
         top_layout.addWidget(self.refresh_button)
         top_layout.addWidget(self.export_table_button)
         top_layout.addWidget(self.export_plot_button)
@@ -94,7 +86,6 @@ class SummaryTab(QWidget):
 
         has_parameters = bool(parameters)
         self.parameter_combo.setEnabled(has_parameters)
-        self.error_combo.setEnabled(has_parameters)
         self.refresh_button.setEnabled(has_parameters)
         self.export_table_button.setEnabled(False)
         self.export_plot_button.setEnabled(False)

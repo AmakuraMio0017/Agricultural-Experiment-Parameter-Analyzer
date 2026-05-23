@@ -12,6 +12,7 @@ from src.agri_analyzer.core.summary import (
     TREATMENT_COLUMN,
     SummaryError,
     _annotate_error_labels,
+    _annotate_outlier_note,
     _bar_positions,
     _configure_matplotlib_fonts,
     _gray_palette,
@@ -35,6 +36,7 @@ class SignificanceResult:
     outliers: pd.DataFrame
     annotations: dict[str, str]
     test_name: str
+    exclude_outliers: bool
 
 
 def p_value_to_stars(p_value: float) -> str:
@@ -71,10 +73,10 @@ def analyze_significance(
             ordered_groups[0][0]: significance.loc[0, "显著性"],
             ordered_groups[1][0]: significance.loc[0, "显著性"],
         }
-        return SignificanceResult(summary, significance, outliers, annotations, "Welch t-test")
+        return SignificanceResult(summary, significance, outliers, annotations, "Welch t-test", exclude_outliers)
 
     significance, letters = _multi_group_anova_tukey(parameter, ordered_groups, summary)
-    return SignificanceResult(summary, significance, outliers, letters, "ANOVA + Tukey HSD")
+    return SignificanceResult(summary, significance, outliers, letters, "ANOVA + Tukey HSD", exclude_outliers)
 
 
 def format_significance_for_output(significance_df: pd.DataFrame) -> pd.DataFrame:
@@ -138,6 +140,8 @@ def plot_significance_summary(
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
+    if result.exclude_outliers:
+        _annotate_outlier_note(ax)
     fig.tight_layout()
 
     if output_path is not None:
