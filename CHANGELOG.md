@@ -147,3 +147,82 @@
 
 - `python -m compileall main.py src tests`：通过。
 - `python -m pytest`：33 passed。
+
+## [0.4.0-beta.1] - 2026-05-24
+
+### 新增
+
+- 新增 `scripts/build_windows.ps1`，用于清理本地构建产物、运行编译检查和测试，并生成 PyInstaller 目录版内部测试程序。
+- 新增 `docs/packaging-windows.md`，记录 Windows 内部测试版打包入口、分发方式、冒烟测试流程和常见问题。
+
+### 变更
+
+- 应用版本号更新为 `0.4.0-beta.1`。
+- README 打包说明调整为优先使用 PyInstaller 目录版，并指向内部测试版打包文档。
+
+### 验证
+
+- `.\scripts\build_windows.ps1`：通过。
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：33 passed。
+- 已生成 `dist\AgriParameterAnalyzer\AgriParameterAnalyzer.exe`。
+- 打包后 exe 启动冒烟测试通过，进程可正常启动并保持运行。
+
+## [0.4.0-beta.2] - 2026-05-24
+
+### 新增
+
+- 新增 debug 日志配置，源码运行写入 `outputs\debug.log`，打包后 exe 运行写入 `dist\AgriParameterAnalyzer\logs\debug.log`。
+- 模块一导入、列识别、确认列弹窗、弹窗校验、格式化计算和表格刷新流程新增关键日志，用于定位内部测试版卡顿位置。
+
+### 变更
+
+- 应用版本号更新为 `0.4.0-beta.2`。
+- README 和 Windows 打包说明补充 debug 日志位置与排查建议。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：33 passed。
+- `.\scripts\build_windows.ps1`：通过。
+- 打包后 exe 启动冒烟测试通过，并确认生成 `dist\AgriParameterAnalyzer\logs\debug.log`。
+
+## [0.4.0-beta.4] - 2026-05-24
+
+### 修复
+
+- 修复内部测试版在检查确认列弹窗返回值后崩溃的问题：避免使用 PySide 弹窗实例上的 enum 属性比较，改为稳定的整数返回码判断。
+- 为“确认列并格式化”槽函数增加兜底异常日志，未预期错误会写入 `debug.log` 并弹出错误提示。
+
+### 变更
+
+- 应用版本号更新为 `0.4.0-beta.4`。
+- Windows 打包脚本新增真实数据预检：若存在 `Desktop\20250524-单果重.xlsx`，打包前先执行读取、列识别和格式化核心流程。
+- 新增 `scripts/smoke_formatting_data.py`，用于稳定执行真实数据格式化预检。
+- Windows 打包脚本显式检查编译、测试、真实数据预检和 PyInstaller 的退出码，任一步失败都会停止打包。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：33 passed。
+- `python scripts\smoke_formatting_data.py --default-desktop`：通过，使用 `C:\Users\jinji\Desktop\20250524-单果重.xlsx` 生成 177 行格式化结果。
+- `.\scripts\build_windows.ps1`：通过，打包前真实数据预检通过。
+- 打包后 exe 启动冒烟测试通过，并确认生成 `dist\AgriParameterAnalyzer\logs\debug.log`。
+
+## [0.4.0-beta.3] - 2026-05-24
+
+### 修复
+
+- 修复内部测试版在“确认列并格式化”弹窗关闭后可能卡住的问题：列选择结果改为在弹窗校验通过时缓存为普通 Python 值，弹窗关闭后不再重新读取 Qt 控件状态。
+
+### 变更
+
+- 应用版本号更新为 `0.4.0-beta.3`。
+- “确认列并格式化”流程增加弹窗返回值检查和读取缓存选择前的细粒度日志。
+
+### 验证
+
+- `python -m compileall main.py src tests`：通过。
+- `python -m pytest`：33 passed。
+- `.\scripts\build_windows.ps1`：通过。
+- 打包后 exe 启动冒烟测试通过，并确认生成 `dist\AgriParameterAnalyzer\logs\debug.log`。

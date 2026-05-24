@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
+from time import perf_counter
 from typing import Iterable
 
 import pandas as pd
+
+
+logger = logging.getLogger(__name__)
 
 
 DATE_KEYWORDS = ("日期", "date", "time", "采样", "采收", "收获", "测定")
@@ -33,12 +38,24 @@ class ColumnDetection:
 def read_table(path: str | Path) -> pd.DataFrame:
     file_path = Path(path)
     suffix = file_path.suffix.lower()
+    logger.debug("Reading table; path=%s; suffix=%s", file_path, suffix)
     try:
         if suffix == ".csv":
-            return _read_csv(file_path)
+            df = _read_csv(file_path)
+            logger.debug("CSV read complete; rows=%s; columns=%s", len(df), len(df.columns))
+            return df
         if suffix in {".xlsx", ".xls"}:
-            return pd.read_excel(file_path)
+            started_at = perf_counter()
+            df = pd.read_excel(file_path)
+            logger.debug(
+                "Excel read complete in %.3fs; rows=%s; columns=%s",
+                perf_counter() - started_at,
+                len(df),
+                len(df.columns),
+            )
+            return df
     except Exception as exc:
+        logger.exception("Table read failed; path=%s", file_path)
         raise TableReadError(f"文件解析失败：{exc}") from exc
     raise TableReadError("仅支持 .xlsx、.xls 或 .csv 文件。")
 
@@ -47,15 +64,26 @@ def _read_csv(path: Path) -> pd.DataFrame:
     last_error: Exception | None = None
     for encoding in CSV_ENCODINGS:
         try:
-            return pd.read_csv(path, encoding=encoding)
+            started_at = perf_counter()
+            df = pd.read_csv(path, encoding=encoding)
+            logger.debug(
+                "CSV read complete in %.3fs with encoding=%s; rows=%s; columns=%s",
+                perf_counter() - started_at,
+                encoding,
+                len(df),
+                len(df.columns),
+            )
+            return df
         except UnicodeDecodeError as exc:
             last_error = exc
+            logger.debug("CSV decode failed with encoding=%s; trying next.", encoding)
     if last_error:
         raise last_error
     return pd.read_csv(path)
 
 
 def detect_columns(df: pd.DataFrame) -> ColumnDetection:
+    logger.debug("Detecting columns; rows=%s; columns=%s", len(df), len(df.columns))
     if df.empty:
         raise ColumnDetectionError("表格为空，无法识别列。")
 
@@ -153,6 +181,13 @@ def format_parameters(
     treatment_column: str,
     parameter_columns: list[str],
 ) -> pd.DataFrame:
+    logger.debug(
+        "Formatting parameters; rows=%s; date=%r; treatment=%r; parameters=%s",
+        len(df),
+        date_column,
+        treatment_column,
+        parameter_columns,
+    )
     if not date_column or date_column not in df.columns:
         raise ColumnDetectionError("日期列不存在，请重新选择。")
     if not treatment_column or treatment_column not in df.columns:
@@ -165,7 +200,14 @@ def format_parameters(
         raise ColumnDetectionError(f"参数列不存在：{', '.join(missing)}")
 
     result = pd.DataFrame()
+    started_at = perf_counter()
     parsed_dates = _parse_date_series(df[date_column], allow_excel_serial=True)
+    logger.debug(
+        "Date parsing complete in %.3fs; valid_dates=%s/%s",
+        perf_counter() - started_at,
+        int(parsed_dates.notna().sum()),
+        len(parsed_dates),
+    )
     if parsed_dates.isna().all():
         raise ColumnDetectionError("日期列无法解析为有效日期。")
 
@@ -173,12 +215,15 @@ def format_parameters(
         [str(column) for column in df.columns],
         exclude={date_column, treatment_column, *parameter_columns},
     )
+    logger.debug("Index column detected: %r", id_column)
     result["序号"] = df[id_column] if id_column else range(1, len(df) + 1)
     result["日期"] = parsed_dates.dt.date
     result["isoweek"] = parsed_dates.dt.isocalendar().week.astype("Int64")
     result["处理方式"] = df[treatment_column].astype(str)
     for column in parameter_columns:
+        logger.debug("Converting parameter column to numeric: %r", column)
         result[column] = pd.to_numeric(df[column], errors="coerce")
+    logger.debug("Formatted dataframe ready; rows=%s; columns=%s", len(result), len(result.columns))
     return result
 
 

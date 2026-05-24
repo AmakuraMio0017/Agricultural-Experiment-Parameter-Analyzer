@@ -31,17 +31,35 @@ python main.py
 
 ## 打包应用
 
-使用 PyInstaller：
+首个内部测试版推荐使用 PyInstaller 目录版。它会生成完整程序文件夹，便于排查依赖和 Qt 插件问题：
 
 ```powershell
-pyinstaller --noconsole --name AgriParameterAnalyzer main.py
+.\scripts\build_windows.ps1
 ```
 
-或使用 Nuitka：
+成功后运行入口为：
 
-```powershell
-python -m nuitka --standalone --windows-console-mode=disable --enable-plugin=pyside6 main.py
+```text
+dist\AgriParameterAnalyzer\AgriParameterAnalyzer.exe
 ```
+
+内部测试分发时请复制整个 `dist\AgriParameterAnalyzer\` 文件夹，不要只复制单独的 `.exe` 文件。详细说明见 `docs/packaging-windows.md`。
+
+## Debug 日志
+
+源码运行时，debug 日志写入：
+
+```text
+outputs\debug.log
+```
+
+打包后的 exe 运行时，debug 日志写入：
+
+```text
+dist\AgriParameterAnalyzer\logs\debug.log
+```
+
+如果导入文件或“确认列并格式化”环节出现卡顿，请优先查看该日志，确认流程停在文件读取、列识别、确认弹窗、格式化计算还是表格刷新。
 
 ## Git 与远程同步
 

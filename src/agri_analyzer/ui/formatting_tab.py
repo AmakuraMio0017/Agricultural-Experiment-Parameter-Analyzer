@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from pathlib import Path
 
 import pandas as pd
@@ -26,6 +28,9 @@ from src.agri_analyzer.core.formatting import (
 )
 from src.agri_analyzer.models.pandas_table_model import PandasTableModel
 from src.agri_analyzer.ui.column_dialog import ColumnConfirmDialog
+
+
+logger = logging.getLogger(__name__)
 
 
 class FormattingTab(QWidget):
@@ -73,6 +78,7 @@ class FormattingTab(QWidget):
         self.export_button.clicked.connect(self.export_file)
 
     def import_file(self) -> None:
+        logger.debug("Opening import file dialog.")
         path, _ = QFileDialog.getOpenFileName(
             self,
             "选择数据文件",
@@ -80,39 +86,91 @@ class FormattingTab(QWidget):
             "数据文件 (*.xlsx *.xls *.csv)",
         )
         if not path:
+            logger.debug("Import canceled by user.")
             return
 
+        logger.info("Import selected: %s", path)
+        started_at = perf_counter()
         try:
             self.source_df = read_table(path)
         except TableReadError as exc:
+            logger.exception("Failed to read table: %s", path)
             QMessageBox.critical(self, "文件解析失败", str(exc))
             return
+        logger.info(
+            "Import read complete in %.3fs; rows=%s; columns=%s; column_names=%s",
+            perf_counter() - started_at,
+            len(self.source_df),
+            len(self.source_df.columns),
+            [str(column) for column in self.source_df.columns],
+        )
 
         self.source_path = Path(path)
         self.formatted_df = None
         self.table_model.set_dataframe(self.source_df)
+        logger.debug("Source dataframe assigned to table model; resizing columns.")
+        started_at = perf_counter()
         self.table_view.resizeColumnsToContents()
+        logger.debug("Source table resize complete in %.3fs.", perf_counter() - started_at)
         self.status_label.setText(f"步骤 2：已导入 {self.source_path.name}，请确认列识别并格式化")
         self.format_button.setEnabled(True)
         self.export_button.setEnabled(False)
+        logger.info("Import UI state updated; format button enabled.")
 
     def confirm_and_format(self) -> None:
+        try:
+            self._confirm_and_format()
+        except Exception:
+            logger.exception("Unexpected error in confirm-and-format flow.")
+            QMessageBox.critical(self, "格式化异常", "确认列并格式化时发生未预期错误，请查看 debug.log。")
+
+    def _confirm_and_format(self) -> None:
+        logger.info(
+            "Confirm-and-format clicked; has_source_df=%s; source_path=%s",
+            self.source_df is not None,
+            self.source_path,
+        )
         if self.source_df is None:
+            logger.warning("Confirm-and-format ignored because no source dataframe is loaded.")
             QMessageBox.warning(self, "未导入文件", "请先导入 Excel 或 CSV 文件。")
             return
 
+        started_at = perf_counter()
         try:
             detection = detect_columns(self.source_df)
         except ColumnDetectionError as exc:
+            logger.exception("Column detection failed.")
             QMessageBox.warning(self, "列识别失败", str(exc))
             return
+        logger.info(
+            "Column detection complete in %.3fs; date=%r; treatment=%r; parameters=%s; messages=%s",
+            perf_counter() - started_at,
+            detection.date_column,
+            detection.treatment_column,
+            detection.parameter_columns,
+            detection.messages,
+        )
 
         columns = [str(column) for column in self.source_df.columns]
+        logger.debug("Opening column confirmation dialog; available_columns=%s", columns)
         dialog = ColumnConfirmDialog(columns, detection, self)
-        if dialog.exec() != dialog.Accepted:
+        dialog_result = dialog.exec()
+        logger.info("Column confirmation dialog closed; result=%s", dialog_result)
+        logger.debug("Checking column confirmation dialog result.")
+        if int(dialog_result) != 1:
+            logger.info("Column confirmation canceled by user.")
             return
 
+        logger.debug("Column confirmation accepted.")
+        logger.debug("Reading cached column selection from dialog.")
         date_column, treatment_column, parameter_columns = dialog.selected_columns()
+        logger.info(
+            "Column selection accepted; date=%r; treatment=%r; parameters=%s",
+            date_column,
+            treatment_column,
+            parameter_columns,
+        )
+        started_at = perf_counter()
         try:
             self.formatted_df = format_parameters(
                 self.source_df,
@@ -121,14 +179,26 @@ class FormattingTab(QWidget):
                 parameter_columns,
             )
         except ColumnDetectionError as exc:
+            logger.exception("Parameter formatting failed.")
             QMessageBox.warning(self, "格式化失败", str(exc))
             return
+        logger.info(
+            "Parameter formatting complete in %.3fs; rows=%s; columns=%s",
+            perf_counter() - started_at,
+            len(self.formatted_df),
+            len(self.formatted_df.columns),
+        )
 
+        logger.debug("Formatted dataframe assigned to table model; resizing columns.")
+        started_at = perf_counter()
         self.table_model.set_dataframe(self.formatted_df)
         self.table_view.resizeColumnsToContents()
+        logger.debug("Formatted table model update and resize complete in %.3fs.", perf_counter() - started_at)
         self.status_label.setText("步骤 3：格式化完成，可预览、复制或导出 XLSX")
         self.export_button.setEnabled(True)
+        logger.debug("Emitting formatting_completed signal.")
         self.formatting_completed.emit(self.formatted_df)
+        logger.info("Confirm-and-format flow completed.")
 
     def export_file(self) -> None:
         if self.formatted_df is None:

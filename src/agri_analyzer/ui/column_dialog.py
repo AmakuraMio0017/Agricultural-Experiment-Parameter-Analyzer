@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -17,9 +19,20 @@ from PySide6.QtWidgets import (
 from src.agri_analyzer.core.formatting import ColumnDetection
 
 
+logger = logging.getLogger(__name__)
+
+
 class ColumnConfirmDialog(QDialog):
     def __init__(self, columns: list[str], detection: ColumnDetection, parent=None) -> None:
         super().__init__(parent)
+        self._selected_columns: tuple[str, str, list[str]] | None = None
+        logger.debug(
+            "Creating column confirmation dialog; columns=%s; detected_date=%r; detected_treatment=%r; detected_parameters=%s",
+            columns,
+            detection.date_column,
+            detection.treatment_column,
+            detection.parameter_columns,
+        )
         self.setWindowTitle("确认列识别结果")
         self.resize(520, 420)
 
@@ -68,15 +81,29 @@ class ColumnConfirmDialog(QDialog):
         layout.addWidget(buttons)
 
     def selected_columns(self) -> tuple[str, str, list[str]]:
+        if self._selected_columns is not None:
+            return self._selected_columns
         parameters = [check.text() for check in self.parameter_checks if check.isChecked()]
         return self.date_combo.currentText(), self.treatment_combo.currentText(), parameters
 
     def _validate(self) -> None:
-        date_column, treatment_column, parameters = self.selected_columns()
+        parameters = [check.text() for check in self.parameter_checks if check.isChecked()]
+        date_column = self.date_combo.currentText()
+        treatment_column = self.treatment_combo.currentText()
+        logger.debug(
+            "Validating column dialog selection; date=%r; treatment=%r; parameters=%s",
+            date_column,
+            treatment_column,
+            parameters,
+        )
         if date_column == treatment_column:
+            logger.warning("Column dialog validation failed: date and treatment columns are identical.")
             QMessageBox.warning(self, "列选择错误", "日期列和处理方式列不能相同。")
             return
         if not parameters:
+            logger.warning("Column dialog validation failed: no parameter columns selected.")
             QMessageBox.warning(self, "列选择错误", "请至少选择一个植株参数列。")
             return
+        self._selected_columns = (date_column, treatment_column, parameters)
+        logger.debug("Column dialog validation passed; accepting dialog.")
         self.accept()
