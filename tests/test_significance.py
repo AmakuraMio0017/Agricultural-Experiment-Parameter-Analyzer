@@ -55,14 +55,32 @@ def test_two_group_significance_runs_welch_ttest() -> None:
     assert row["组2样本量"] == 4
     assert row["p_value"] < 0.001
     assert row["显著性"] == "***"
+    assert row["均值差"] == -10
+    assert row["CI95%下限"] < row["均值差"] < row["CI95%上限"]
+    assert row["CI95%上限"] < 0
+    assert row["Hedges_g"] < -0.8
+    assert row["效应量解释"] == "大效应"
+    assert row["样本量判断"] == "样本量偏少"
+    assert row["可信度判断"] == "中等"
+    assert "建议增加重复后再确认" in row["结果建议"]
 
 
 def test_multi_group_significance_runs_anova_and_tukey_with_letters() -> None:
     result = analyze_significance(multi_group_frame(), "单果重")
 
     assert result.test_name == "ANOVA + Tukey HSD"
-    assert result.significance.iloc[0]["检验方法"] == "one-way ANOVA"
+    anova_row = result.significance.iloc[0]
+    assert anova_row["检验方法"] == "one-way ANOVA"
+    assert anova_row["eta_squared"] > 0.14
+    assert anova_row["整体效应量解释"] == "整体大效应"
+    assert anova_row["样本量判断"] == "样本量偏少"
+    assert anova_row["可信度判断"] == "中等"
+    assert "整体 ANOVA 显著" in anova_row["结果建议"]
     assert set(result.significance["检验方法"]) == {"one-way ANOVA", "Tukey HSD"}
+    tukey_rows = result.significance.loc[result.significance["检验方法"] == "Tukey HSD"]
+    assert {"CI95%下限", "CI95%上限", "Hedges_g", "可信度判断", "结果建议"}.issubset(tukey_rows.columns)
+    assert tukey_rows["Hedges_g"].notna().all()
+    assert tukey_rows["结果建议"].str.len().gt(0).all()
     assert set(result.annotations) == {"A", "B", "C"}
     for group_a in result.annotations:
         for group_b in result.annotations:
