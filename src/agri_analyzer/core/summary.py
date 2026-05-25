@@ -112,12 +112,23 @@ def summarize_by_treatment(
 
     summary = (
         working.groupby(TREATMENT_COLUMN, sort=False)[parameter]
-        .agg(n="count", mean="mean", sd="std", min="min", max="max")
+        .agg(n="count", sum="sum", mean="mean", sd="std", min="min", max="max")
         .reset_index()
     )
     summary["sem"] = summary["sd"] / np.sqrt(summary["n"])
 
-    control_mean = _find_control_mean(summary, tuple(control_labels or CONTROL_LABELS))
+    control_sum = _find_control_stat(summary, "sum", tuple(control_labels or CONTROL_LABELS))
+    if control_sum is None or pd.isna(control_sum):
+        summary["sum_diff_vs_control"] = np.nan
+        summary["sum_diff_percent_vs_control"] = np.nan
+    else:
+        summary["sum_diff_vs_control"] = summary["sum"] - control_sum
+        if control_sum == 0:
+            summary["sum_diff_percent_vs_control"] = np.nan
+        else:
+            summary["sum_diff_percent_vs_control"] = summary["sum_diff_vs_control"] / control_sum * 100
+
+    control_mean = _find_control_stat(summary, "mean", tuple(control_labels or CONTROL_LABELS))
     if control_mean is None or pd.isna(control_mean):
         summary["diff_vs_control"] = np.nan
         summary["diff_percent_vs_control"] = np.nan
@@ -132,11 +143,14 @@ def summarize_by_treatment(
         [
             TREATMENT_COLUMN,
             "n",
+            "sum",
             "mean",
             "sd",
             "sem",
             "min",
             "max",
+            "sum_diff_vs_control",
+            "sum_diff_percent_vs_control",
             "diff_vs_control",
             "diff_percent_vs_control",
         ]
@@ -438,11 +452,19 @@ def _validate_summary_input(df: pd.DataFrame, parameter: str) -> None:
 
 
 def _find_control_mean(summary: pd.DataFrame, control_labels: Iterable[str]) -> float | None:
+    return _find_control_stat(summary, "mean", control_labels)
+
+
+def _find_control_stat(
+    summary: pd.DataFrame,
+    column: str,
+    control_labels: Iterable[str],
+) -> float | None:
     normalized = {str(label).strip().lower() for label in control_labels}
     for _, row in summary.iterrows():
         treatment = str(row[TREATMENT_COLUMN]).strip().lower()
         if treatment in normalized:
-            return float(row["mean"])
+            return float(row[column])
     return None
 
 

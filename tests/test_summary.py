@@ -85,11 +85,15 @@ def test_summarize_by_treatment_calculates_descriptive_statistics_without_outlie
     treated = summary.loc[summary["处理方式"] == "处理"].iloc[0]
 
     assert control["n"] == 2
+    assert control["sum"] == 24
     assert control["mean"] == 12
     assert round(control["sd"], 4) == round(math.sqrt(8), 4)
     assert control["sem"] == 2
     assert treated["n"] == 3
+    assert treated["sum"] == 50
     assert round(treated["mean"], 4) == 16.6667
+    assert round(treated["sum_diff_vs_control"], 4) == 26
+    assert round(treated["sum_diff_percent_vs_control"], 4) == 108.3333
     assert round(treated["diff_vs_control"], 4) == 4.6667
     assert round(treated["diff_percent_vs_control"], 4) == 38.8889
 
@@ -119,6 +123,8 @@ def test_summarize_by_treatment_leaves_control_diff_empty_without_control() -> N
 
     assert summary["diff_vs_control"].isna().all()
     assert summary["diff_percent_vs_control"].isna().all()
+    assert summary["sum_diff_vs_control"].isna().all()
+    assert summary["sum_diff_percent_vs_control"].isna().all()
 
 
 def test_summarize_by_treatment_keeps_single_sample_error_as_nan() -> None:
