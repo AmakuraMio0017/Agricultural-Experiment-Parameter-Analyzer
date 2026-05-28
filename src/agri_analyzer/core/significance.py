@@ -9,6 +9,7 @@ from scipy import stats
 
 from src.agri_analyzer.core.summary import (
     ID_COLUMN,
+    REPLICATE_COLUMN,
     TREATMENT_COLUMN,
     SummaryError,
     _annotate_error_labels,
@@ -37,6 +38,7 @@ class SignificanceResult:
     annotations: dict[str, str]
     test_name: str
     exclude_outliers: bool
+    sample_scope: str
 
 
 def p_value_to_stars(p_value: float) -> str:
@@ -59,24 +61,30 @@ def analyze_significance(
     _validate_input(df, parameter)
     outliers = detect_outliers(df, parameter) if exclude_outliers else pd.DataFrame()
     cleaned = _clean_for_parameter(df, parameter, outliers)
-    groups = _group_values(cleaned, parameter)
+    prepared, sample_scope = _prepare_significance_samples(cleaned, parameter)
+    groups = _group_values(prepared, parameter)
     if len(groups) < 2:
         raise SignificanceError("至少需要两个处理组才能进行显著性判断。")
 
-    summary = summarize_by_treatment(df, parameter, exclude_outliers=exclude_outliers)
+    if sample_scope == "重复均值样本":
+        summary = _summarize_prepared_by_treatment(prepared, parameter)
+    else:
+        summary = summarize_by_treatment(df, parameter, exclude_outliers=exclude_outliers)
     ordered_treatments = summary[TREATMENT_COLUMN].astype(str).tolist()
     ordered_groups = [(treatment, groups[treatment]) for treatment in ordered_treatments if treatment in groups]
 
     if len(ordered_groups) == 2:
         significance = _two_group_ttest(parameter, ordered_groups, summary)
+        significance["样本口径"] = sample_scope
         annotations = {
             ordered_groups[0][0]: significance.loc[0, "显著性"],
             ordered_groups[1][0]: significance.loc[0, "显著性"],
         }
-        return SignificanceResult(summary, significance, outliers, annotations, "Welch t-test", exclude_outliers)
+        return SignificanceResult(summary, significance, outliers, annotations, "Welch t-test", exclude_outliers, sample_scope)
 
     significance, letters = _multi_group_anova_tukey(parameter, ordered_groups, summary)
-    return SignificanceResult(summary, significance, outliers, letters, "ANOVA + Tukey HSD", exclude_outliers)
+    significance["样本口径"] = sample_scope
+    return SignificanceResult(summary, significance, outliers, letters, "ANOVA + Tukey HSD", exclude_outliers, sample_scope)
 
 
 def format_significance_for_output(significance_df: pd.DataFrame) -> pd.DataFrame:
@@ -140,9 +148,9 @@ def plot_significance_summary(
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
+    fig.tight_layout()
     if result.exclude_outliers:
         _annotate_outlier_note(ax)
-    fig.tight_layout()
 
     if output_path is not None:
         output = Path(output_path)
@@ -164,7 +172,58 @@ def _clean_for_parameter(df: pd.DataFrame, parameter: str, outliers: pd.DataFram
     if not outliers.empty and ID_COLUMN in outliers.columns and ID_COLUMN in working.columns:
         outlier_ids = set(outliers[ID_COLUMN].astype(str))
         working = working[~working[ID_COLUMN].astype(str).isin(outlier_ids)]
-    return working[[TREATMENT_COLUMN, parameter]].dropna(subset=[parameter])
+    columns = [TREATMENT_COLUMN]
+    if REPLICATE_COLUMN in working.columns:
+        columns.append(REPLICATE_COLUMN)
+    columns.append(parameter)
+    return working[columns].dropna(subset=[parameter])
+
+
+def _prepare_significance_samples(df: pd.DataFrame, parameter: str) -> tuple[pd.DataFrame, str]:
+    if REPLICATE_COLUMN not in df.columns:
+        return df[[TREATMENT_COLUMN, parameter]].copy(), "逐行样本"
+
+    working = df[[TREATMENT_COLUMN, REPLICATE_COLUMN, parameter]].copy()
+    working[REPLICATE_COLUMN] = working[REPLICATE_COLUMN].astype(str)
+    working = working[working[REPLICATE_COLUMN].str.strip() != ""]
+    if working.empty:
+        return df[[TREATMENT_COLUMN, parameter]].copy(), "逐行样本"
+
+    prepared = (
+        working.groupby([TREATMENT_COLUMN, REPLICATE_COLUMN], sort=False)[parameter]
+        .mean()
+        .reset_index()
+    )
+    return prepared[[TREATMENT_COLUMN, parameter]], "重复均值样本"
+
+
+def _summarize_prepared_by_treatment(df: pd.DataFrame, parameter: str) -> pd.DataFrame:
+    summary = (
+        df.groupby(TREATMENT_COLUMN, sort=False)[parameter]
+        .agg(n="count", sum="sum", mean="mean", sd="std", min="min", max="max")
+        .reset_index()
+    )
+    summary["sem"] = summary["sd"] / np.sqrt(summary["n"])
+    summary["sum_diff_vs_control"] = np.nan
+    summary["sum_diff_percent_vs_control"] = np.nan
+    summary["diff_vs_control"] = np.nan
+    summary["diff_percent_vs_control"] = np.nan
+    return summary[
+        [
+            TREATMENT_COLUMN,
+            "n",
+            "sum",
+            "mean",
+            "sd",
+            "sem",
+            "min",
+            "max",
+            "sum_diff_vs_control",
+            "sum_diff_percent_vs_control",
+            "diff_vs_control",
+            "diff_percent_vs_control",
+        ]
+    ]
 
 
 def _group_values(df: pd.DataFrame, parameter: str) -> dict[str, np.ndarray]:

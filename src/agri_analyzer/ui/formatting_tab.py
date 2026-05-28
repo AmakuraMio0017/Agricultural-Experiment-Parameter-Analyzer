@@ -163,7 +163,7 @@ class FormattingTab(QWidget):
 
         logger.debug("Column confirmation accepted.")
         logger.debug("Reading cached column selection from dialog.")
-        date_column, treatment_column, parameter_columns = dialog.selected_columns()
+        date_column, treatment_column, replicate_column, parameter_columns = dialog.selected_columns()
         logger.info(
             "Column selection accepted; date=%r; treatment=%r; parameters=%s",
             date_column,
@@ -177,6 +177,7 @@ class FormattingTab(QWidget):
                 date_column,
                 treatment_column,
                 parameter_columns,
+                replicate_column=replicate_column,
             )
         except ColumnDetectionError as exc:
             logger.exception("Parameter formatting failed.")

@@ -11,7 +11,8 @@ ID_COLUMN = "序号"
 DATE_COLUMN = "日期"
 WEEK_COLUMN = "isoweek"
 TREATMENT_COLUMN = "处理方式"
-FIXED_COLUMNS = (ID_COLUMN, DATE_COLUMN, WEEK_COLUMN, TREATMENT_COLUMN)
+REPLICATE_COLUMN = "小区/重复"
+FIXED_COLUMNS = (ID_COLUMN, DATE_COLUMN, WEEK_COLUMN, TREATMENT_COLUMN, REPLICATE_COLUMN)
 CONTROL_LABELS = ("对照", "CK", "Control")
 OUTLIER_NOTE = "默认剔除离群值（IQR 1.5×）"
 OUTLIER_COLUMNS = (
@@ -231,6 +232,62 @@ def clean_parameter_data(
     return working
 
 
+def cumulative_yield_table(
+    df: pd.DataFrame,
+    parameter: str,
+    exclude_outliers: bool = True,
+) -> pd.DataFrame:
+    cleaned = clean_parameter_data(df, parameter, exclude_outliers=exclude_outliers)
+    cleaned[DATE_COLUMN] = pd.to_datetime(cleaned[DATE_COLUMN], errors="coerce")
+    cleaned[WEEK_COLUMN] = pd.to_numeric(cleaned[WEEK_COLUMN], errors="coerce")
+    cleaned = cleaned.dropna(subset=[DATE_COLUMN, WEEK_COLUMN])
+    if cleaned.empty:
+        raise SummaryError(f"参数列没有可累计的有效周数据：{parameter}")
+
+    has_replicates = REPLICATE_COLUMN in cleaned.columns
+    group_columns = [TREATMENT_COLUMN, WEEK_COLUMN]
+    if has_replicates:
+        group_columns.insert(1, REPLICATE_COLUMN)
+
+    weekly = (
+        cleaned.groupby(group_columns, sort=True)
+        .agg(本周产量=(parameter, "sum"), 日期=(DATE_COLUMN, "min"))
+        .reset_index()
+        .sort_values(group_columns)
+    )
+
+    cumulative_group_columns = [TREATMENT_COLUMN]
+    if has_replicates:
+        cumulative_group_columns.append(REPLICATE_COLUMN)
+    weekly["累计产量"] = weekly.groupby(cumulative_group_columns, sort=False)["本周产量"].cumsum()
+    if not has_replicates:
+        weekly[REPLICATE_COLUMN] = ""
+
+    summary = (
+        weekly.groupby([TREATMENT_COLUMN, WEEK_COLUMN], sort=True)["累计产量"]
+        .agg(累计均值="mean", 累计SD="std", 重复数="count")
+        .reset_index()
+    )
+    summary["累计SEM"] = summary["累计SD"] / np.sqrt(summary["重复数"])
+    result = weekly.merge(summary, on=[TREATMENT_COLUMN, WEEK_COLUMN], how="left")
+    result[WEEK_COLUMN] = result[WEEK_COLUMN].astype("Int64")
+    result[DATE_COLUMN] = result[DATE_COLUMN].dt.date
+    return result[
+        [
+            DATE_COLUMN,
+            WEEK_COLUMN,
+            TREATMENT_COLUMN,
+            REPLICATE_COLUMN,
+            "本周产量",
+            "累计产量",
+            "累计均值",
+            "累计SD",
+            "累计SEM",
+            "重复数",
+        ]
+    ]
+
+
 def weekly_treatment_means(df: pd.DataFrame, parameter: str) -> pd.DataFrame:
     _validate_summary_input(df, parameter)
     if WEEK_COLUMN not in df.columns:
@@ -316,9 +373,87 @@ def plot_weekly_trend(
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
     ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
     if exclude_outliers:
         _annotate_outlier_note(ax)
+
+    if output_path is not None:
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output, dpi=300, bbox_inches="tight")
+    return fig
+
+
+def plot_cumulative_yield_bar(
+    df: pd.DataFrame,
+    parameter: str,
+    output_path: str | Path | None = None,
+    exclude_outliers: bool = True,
+):
+    import matplotlib.pyplot as plt
+
+    cumulative = cumulative_yield_table(df, parameter, exclude_outliers=exclude_outliers)
+    summary = (
+        cumulative[[WEEK_COLUMN, TREATMENT_COLUMN, "累计均值", "累计SEM"]]
+        .drop_duplicates()
+        .sort_values([WEEK_COLUMN, TREATMENT_COLUMN])
+    )
+    if summary.empty:
+        raise SummaryError(f"参数列没有可绘图的累计数据：{parameter}")
+
+    _configure_matplotlib_fonts(plt)
+    weeks = sorted(summary[WEEK_COLUMN].dropna().astype(int).drop_duplicates().tolist())
+    treatments = summary[TREATMENT_COLUMN].astype(str).drop_duplicates().tolist()
+    colors = _gray_palette(len(treatments))
+    x_base = np.arange(len(weeks), dtype=float)
+    total_width = 0.78
+    bar_width = total_width / max(len(treatments), 1)
+    offsets = (np.arange(len(treatments), dtype=float) - (len(treatments) - 1) / 2) * bar_width
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=300)
+    all_values: list[float] = []
+    all_errors: list[float] = []
+    for index, treatment in enumerate(treatments):
+        treatment_summary = (
+            summary[summary[TREATMENT_COLUMN].astype(str) == treatment]
+            .assign(**{WEEK_COLUMN: lambda frame: frame[WEEK_COLUMN].astype(int)})
+            .set_index(WEEK_COLUMN)
+            .reindex(weeks)
+        )
+        values = treatment_summary["累计均值"].to_numpy(dtype=float)
+        errors = treatment_summary["累计SEM"].fillna(0).to_numpy(dtype=float)
+        all_values.extend(values[np.isfinite(values)].tolist())
+        all_errors.extend(errors[np.isfinite(values)].tolist())
+        ax.bar(
+            x_base + offsets[index],
+            values,
+            yerr=errors,
+            width=bar_width * 0.9,
+            capsize=3,
+            color=colors[index],
+            edgecolor="black",
+            linewidth=0.7,
+            label=str(treatment),
+            error_kw={"elinewidth": 0.7, "capthick": 0.7},
+        )
+
+    ax.set_xticks(x_base)
+    ax.set_xticklabels([str(week) for week in weeks])
+    ax.set_xlabel(WEEK_COLUMN)
+    ax.set_ylabel(f"{parameter}累计")
+    if all_values:
+        value_array = np.array(all_values, dtype=float)
+        error_array = np.array(all_errors or [0], dtype=float)
+        upper = float(np.nanmax(value_array + np.nan_to_num(error_array, nan=0.0)))
+        ax.set_ylim(0, upper * 1.18 if upper > 0 else 1)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", color="0.88", linewidth=0.6)
+    ax.set_axisbelow(True)
+    ax.legend(frameon=False, fontsize=8)
     fig.tight_layout()
+    if exclude_outliers:
+        _annotate_outlier_note(ax)
 
     if output_path is not None:
         output = Path(output_path)
@@ -379,9 +514,9 @@ def plot_treatment_distribution(
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", color="0.88", linewidth=0.6)
     ax.set_axisbelow(True)
+    fig.tight_layout()
     if exclude_outliers:
         _annotate_outlier_note(ax)
-    fig.tight_layout()
 
     if output_path is not None:
         output = Path(output_path)
@@ -519,11 +654,10 @@ def _annotate_error_labels(
 
 
 def _annotate_outlier_note(ax) -> None:
-    ax.text(
+    ax.figure.text(
         0.99,
         0.02,
         OUTLIER_NOTE,
-        transform=ax.transAxes,
         ha="right",
         va="bottom",
         fontsize=7,

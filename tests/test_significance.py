@@ -36,6 +36,19 @@ def multi_group_frame() -> pd.DataFrame:
     )
 
 
+def replicate_significance_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "序号": range(1, 13),
+            "日期": pd.to_datetime(["2026-04-01"] * 6 + ["2026-04-08"] * 6).date,
+            "isoweek": [14] * 6 + [15] * 6,
+            "处理方式": ["对照", "对照", "对照", "处理", "处理", "处理"] * 2,
+            "小区/重复": ["R1", "R2", "R3", "R1", "R2", "R3"] * 2,
+            "产量": [10, 12, 14, 20, 22, 24, 11, 13, 15, 21, 23, 25],
+        }
+    )
+
+
 def test_p_value_to_stars_uses_standard_thresholds() -> None:
     assert p_value_to_stars(0.0009) == "***"
     assert p_value_to_stars(0.009) == "**"
@@ -63,6 +76,17 @@ def test_two_group_significance_runs_welch_ttest() -> None:
     assert row["样本量判断"] == "样本量偏少"
     assert row["可信度判断"] == "中等"
     assert "建议增加重复后再确认" in row["结果建议"]
+
+
+def test_significance_uses_replicate_means_as_independent_samples() -> None:
+    result = analyze_significance(replicate_significance_frame(), "产量", exclude_outliers=False)
+    row = result.significance.iloc[0]
+
+    assert result.sample_scope == "重复均值样本"
+    assert row["样本口径"] == "重复均值样本"
+    assert row["组1样本量"] == 3
+    assert row["组2样本量"] == 3
+    assert result.summary.loc[result.summary["处理方式"] == "对照", "n"].iloc[0] == 3
 
 
 def test_multi_group_significance_runs_anova_and_tukey_with_letters() -> None:
@@ -131,7 +155,7 @@ def test_two_group_significance_plot_writes_stars_and_uses_expected_layout(tmp_p
     assert ax.get_xlim() == (0.0, 3.0)
     assert round(ax.patches[0].get_width(), 2) == 0.4
     assert any(text.get_text() == "***" for text in ax.texts)
-    assert OUTLIER_NOTE in [text.get_text() for text in ax.texts]
+    assert OUTLIER_NOTE in [text.get_text() for text in figure.texts]
     figure.clear()
 
 
@@ -146,7 +170,7 @@ def test_significance_plot_supports_sd_error_line(tmp_path: Path) -> None:
     assert output.exists()
     assert output.stat().st_size > 0
     assert any("± 1.29" in label for label in labels)
-    assert OUTLIER_NOTE in labels
+    assert OUTLIER_NOTE in [text.get_text() for text in figure.texts]
     figure.clear()
 
 
@@ -162,7 +186,7 @@ def test_multi_group_significance_plot_writes_letters(tmp_path: Path) -> None:
     assert output.stat().st_size > 0
     assert round(ax.patches[0].get_width(), 2) == 0.4
     assert set(result.annotations.values()).issubset(plotted_texts)
-    assert OUTLIER_NOTE in plotted_texts
+    assert OUTLIER_NOTE in [text.get_text() for text in figure.texts]
     figure.clear()
 
 

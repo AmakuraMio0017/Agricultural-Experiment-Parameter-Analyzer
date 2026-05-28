@@ -6,11 +6,13 @@ import pandas as pd
 
 from src.agri_analyzer.core.formatting import detect_columns, format_parameters, read_table
 from src.agri_analyzer.core.summary import (
+    cumulative_yield_table,
     detect_outliers,
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
     OUTLIER_NOTE,
+    plot_cumulative_yield_bar,
     plot_treatment_distribution,
     plot_weekly_trend,
     plot_treatment_summary,
@@ -64,6 +66,31 @@ def distribution_sample() -> pd.DataFrame:
             "isoweek": [14] * 12,
             "处理方式": ["对照"] * 6 + ["处理"] * 6,
             "单果重": [10, 10, 10, 11, 12, 13, 15, 15, 16, 17, 18, 19],
+        }
+    )
+
+
+def cumulative_replicate_sample() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "序号": range(1, 13),
+            "日期": pd.to_datetime(["2026-03-25"] * 4 + ["2026-03-27"] * 4 + ["2026-04-01"] * 4).date,
+            "isoweek": [13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14],
+            "处理方式": ["对照", "对照", "处理", "处理"] * 3,
+            "小区/重复": ["R1", "R2", "R1", "R2"] * 3,
+            "产量": [10, 12, 20, 22, 2, 3, 4, 5, 5, 7, 9, 11],
+        }
+    )
+
+
+def cumulative_no_replicate_sample() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "序号": range(1, 5),
+            "日期": pd.to_datetime(["2026-03-25", "2026-03-25", "2026-04-01", "2026-04-01"]).date,
+            "isoweek": [13, 13, 14, 14],
+            "处理方式": ["对照", "处理", "对照", "处理"],
+            "产量": [12, 20, 7, 11],
         }
     )
 
@@ -172,6 +199,51 @@ def test_weekly_treatment_means_groups_by_isoweek_and_treatment() -> None:
     assert treated_week_15["n"] == 2
 
 
+def test_cumulative_yield_table_accumulates_by_replicate_before_treatment_summary() -> None:
+    table = cumulative_yield_table(cumulative_replicate_sample(), "产量", exclude_outliers=False)
+    treated_second = table[
+        (table["处理方式"] == "处理")
+        & (table["isoweek"] == 14)
+    ]
+
+    assert set(treated_second["累计产量"]) == {33, 38}
+    assert treated_second["累计均值"].iloc[0] == 35.5
+    assert treated_second["重复数"].iloc[0] == 2
+    week_13_r1 = table[
+        (table["处理方式"] == "处理")
+        & (table["小区/重复"] == "R1")
+        & (table["isoweek"] == 13)
+    ].iloc[0]
+    assert week_13_r1["本周产量"] == 24
+
+
+def test_cumulative_yield_table_supports_no_replicate_compatibility_mode() -> None:
+    table = cumulative_yield_table(cumulative_no_replicate_sample(), "产量", exclude_outliers=False)
+    control_second = table[
+        (table["处理方式"] == "对照")
+        & (table["isoweek"] == 14)
+    ].iloc[0]
+
+    assert control_second["小区/重复"] == ""
+    assert control_second["累计产量"] == 19
+    assert control_second["累计均值"] == 19
+    assert control_second["重复数"] == 1
+
+
+def test_cumulative_yield_plot_writes_grouped_bar_chart(tmp_path: Path) -> None:
+    output = tmp_path / "cumulative_yield.png"
+
+    figure = plot_cumulative_yield_bar(cumulative_replicate_sample(), "产量", output_path=output, exclude_outliers=False)
+    ax = figure.axes[0]
+
+    assert output.exists()
+    assert output.stat().st_size > 0
+    assert len(ax.patches) == 4
+    assert ax.get_xlabel() == "isoweek"
+    assert ax.get_ylabel() == "产量累计"
+    figure.clear()
+
+
 def test_weekly_trend_plot_offsets_scatter_but_keeps_mean_lines_on_isoweek(tmp_path: Path) -> None:
     output = tmp_path / "weekly_trend.png"
 
@@ -196,7 +268,7 @@ def test_weekly_trend_plot_offsets_scatter_but_keeps_mean_lines_on_isoweek(tmp_p
     assert any("处理 均值" == label for label in line_labels)
     assert [14, 15, 16] in line_x_values
     assert ax.get_xlabel() == "isoweek"
-    assert OUTLIER_NOTE in [text.get_text() for text in ax.texts]
+    assert OUTLIER_NOTE in [text.get_text() for text in figure.texts]
     figure.clear()
 
 
@@ -219,7 +291,7 @@ def test_treatment_distribution_plot_uses_treatment_axis_and_density_sizes(tmp_p
     assert min(scatter_x_values) < 1
     assert max(scatter_x_values) > 2
     assert max(scatter_sizes) > min(scatter_sizes)
-    assert OUTLIER_NOTE in [text.get_text() for text in ax.texts]
+    assert OUTLIER_NOTE in [text.get_text() for text in figure.texts]
     figure.clear()
 
 

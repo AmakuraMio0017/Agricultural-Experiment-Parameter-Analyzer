@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 DATE_KEYWORDS = ("日期", "date", "time", "采样", "采收", "收获", "测定")
 TREATMENT_KEYWORDS = ("处理", "分组", "group", "treatment", "control", "对照")
+REPLICATE_KEYWORDS = ("小区", "重复", "rep", "replicate", "plot", "block", "区组")
 INDEX_KEYWORDS = ("序号", "编号", "id", "index", "number", "no.")
 CSV_ENCODINGS = ("utf-8-sig", "utf-8", "gbk", "gb18030")
 
@@ -30,6 +31,7 @@ class ColumnDetectionError(ValueError):
 class ColumnDetection:
     date_column: str | None
     treatment_column: str | None
+    replicate_column: str | None
     parameter_columns: list[str]
     needs_confirmation: bool
     messages: list[str]
@@ -90,7 +92,8 @@ def detect_columns(df: pd.DataFrame) -> ColumnDetection:
     columns = [str(column) for column in df.columns]
     date_column, date_confident = _detect_date_column(df, columns)
     treatment_column, treatment_confident = _detect_treatment_column(df, columns, date_column)
-    parameter_columns = _detect_numeric_columns(df, columns, exclude={date_column, treatment_column})
+    replicate_column = _detect_replicate_column(df, columns, exclude={date_column, treatment_column})
+    parameter_columns = _detect_numeric_columns(df, columns, exclude={date_column, treatment_column, replicate_column})
 
     messages: list[str] = []
     if not date_column:
@@ -109,6 +112,7 @@ def detect_columns(df: pd.DataFrame) -> ColumnDetection:
     return ColumnDetection(
         date_column=date_column,
         treatment_column=treatment_column,
+        replicate_column=replicate_column,
         parameter_columns=parameter_columns,
         needs_confirmation=bool(messages) or len(parameter_columns) > 1,
         messages=messages,
@@ -175,11 +179,24 @@ def _detect_numeric_columns(
     return numeric_columns
 
 
+def _detect_replicate_column(
+    df: pd.DataFrame, columns: list[str], exclude: Iterable[str | None]
+) -> str | None:
+    excluded = {column for column in exclude if column}
+    for column in columns:
+        if column in excluded:
+            continue
+        if any(keyword in column.lower() for keyword in REPLICATE_KEYWORDS):
+            return column
+    return None
+
+
 def format_parameters(
     df: pd.DataFrame,
     date_column: str,
     treatment_column: str,
     parameter_columns: list[str],
+    replicate_column: str | None = None,
 ) -> pd.DataFrame:
     logger.debug(
         "Formatting parameters; rows=%s; date=%r; treatment=%r; parameters=%s",
@@ -198,6 +215,8 @@ def format_parameters(
     missing = [column for column in parameter_columns if column not in df.columns]
     if missing:
         raise ColumnDetectionError(f"参数列不存在：{', '.join(missing)}")
+    if replicate_column and replicate_column not in df.columns:
+        raise ColumnDetectionError("小区/重复列不存在，请重新选择。")
 
     result = pd.DataFrame()
     started_at = perf_counter()
@@ -213,13 +232,15 @@ def format_parameters(
 
     id_column = _detect_index_column(
         [str(column) for column in df.columns],
-        exclude={date_column, treatment_column, *parameter_columns},
+        exclude={date_column, treatment_column, replicate_column, *parameter_columns},
     )
     logger.debug("Index column detected: %r", id_column)
     result["序号"] = df[id_column] if id_column else range(1, len(df) + 1)
     result["日期"] = parsed_dates.dt.date
     result["isoweek"] = parsed_dates.dt.isocalendar().week.astype("Int64")
     result["处理方式"] = df[treatment_column].astype(str)
+    if replicate_column:
+        result["小区/重复"] = df[replicate_column].astype(str)
     for column in parameter_columns:
         logger.debug("Converting parameter column to numeric: %r", column)
         result[column] = pd.to_numeric(df[column], errors="coerce")

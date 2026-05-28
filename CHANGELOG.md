@@ -6,6 +6,8 @@
 
 ### 变更
 
+- 2026-05-28：模块一新增“小区/重复”列识别与保留，避免重复编号误入参数列；模块二新增累计产量表和累计产量柱状图；模块三在存在“小区/重复”列时改用重复均值样本进行显著性判断，并在结果中标注样本口径。
+- 2026-05-28：累计产量统计与累计柱状图改为按 `isoweek` 作为最小时间单位汇总；离群值说明改为绘制在整张图片右下角，避免被图表区内容遮挡。
 - 模块二统计表新增 `sum`、`sum_diff_vs_control`、`sum_diff_percent_vs_control` 列，用于查看总产量等累积型参数的总和差异与相对对照差异百分比。
 - debug 日志改为每次启动生成带时间戳的 `debug_YYYYMMDD_HHMMSS.log`，并默认仅保留最近 10 份启动日志，避免单个日志文件长期累积过大。
 - 模块三显著性结果新增可信度解释字段：Welch t-test 输出均值差、Welch_df、CI95%、Hedges' g、效应量解释、样本量判断、可信度判断和中文结果建议。
@@ -13,6 +15,10 @@
 
 ### 验证
 
+- 2026-05-28：`python -m compileall main.py src tests`：通过。
+- 2026-05-28：`python -m pytest`：40 passed。
+- 2026-05-28：使用 `D:\宏福农业\01-试验组工作\02-项目记录\2025\YNDL25001-Vitalion高留果数效果实验\20260126-第二轮\数据处理\20260528-14产量.xlsx` 验证累计产量图输出，生成 `outputs/yield_cumulative_20260528_14.png`。
+- 2026-05-28：重新验证累计产量图输出，确认 x 轴为 `isoweek`，离群值说明位于整张图片右下角。
 - `python -m compileall main.py src tests`：通过。
 - `python -m pytest`：34 passed。
 - 使用 `C:\Users\jinji\Desktop\20250524-产量.xlsx`、`C:\Users\jinji\Desktop\20250524-单果重.xlsx`、`C:\Users\jinji\Desktop\20250524-尾果重.xlsx` 完成真实数据格式化和模块二统计冒烟测试。

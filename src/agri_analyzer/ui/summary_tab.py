@@ -18,9 +18,11 @@ from PySide6.QtWidgets import (
 
 from src.agri_analyzer.core.summary import (
     SummaryError,
+    cumulative_yield_table,
     detect_parameter_columns,
     format_outliers_for_output,
     format_summary_for_output,
+    plot_cumulative_yield_bar,
     plot_treatment_distribution,
     plot_weekly_trend,
     summarize_with_outliers,
@@ -45,10 +47,12 @@ class SummaryTab(QWidget):
         self.export_table_button = QPushButton("导出统计表 XLSX")
         self.export_plot_button = QPushButton("导出日期趋势图")
         self.export_distribution_button = QPushButton("导出处理分布图")
+        self.export_cumulative_button = QPushButton("导出累计产量图")
         self.refresh_button.setEnabled(False)
         self.export_table_button.setEnabled(False)
         self.export_plot_button.setEnabled(False)
         self.export_distribution_button.setEnabled(False)
+        self.export_cumulative_button.setEnabled(False)
 
         self.table_model = PandasTableModel()
         self.table_view = QTableView()
@@ -63,6 +67,7 @@ class SummaryTab(QWidget):
         top_layout.addWidget(self.export_table_button)
         top_layout.addWidget(self.export_plot_button)
         top_layout.addWidget(self.export_distribution_button)
+        top_layout.addWidget(self.export_cumulative_button)
         top_layout.addStretch()
 
         layout = QVBoxLayout(self)
@@ -75,6 +80,7 @@ class SummaryTab(QWidget):
         self.export_table_button.clicked.connect(self.export_table)
         self.export_plot_button.clicked.connect(self.export_plot)
         self.export_distribution_button.clicked.connect(self.export_distribution_plot)
+        self.export_cumulative_button.clicked.connect(self.export_cumulative_plot)
 
     def set_formatted_data(self, dataframe: pd.DataFrame) -> None:
         self.formatted_df = dataframe.copy()
@@ -90,6 +96,7 @@ class SummaryTab(QWidget):
         self.export_table_button.setEnabled(False)
         self.export_plot_button.setEnabled(False)
         self.export_distribution_button.setEnabled(False)
+        self.export_cumulative_button.setEnabled(False)
 
         if not has_parameters:
             self.summary_df = None
@@ -119,6 +126,7 @@ class SummaryTab(QWidget):
         self.export_table_button.setEnabled(True)
         self.export_plot_button.setEnabled(True)
         self.export_distribution_button.setEnabled(True)
+        self.export_cumulative_button.setEnabled(True)
 
     def export_table(self) -> None:
         if self.summary_df is None:
@@ -148,6 +156,11 @@ class SummaryTab(QWidget):
                 format_outliers_for_output(outliers).to_excel(
                     writer,
                     sheet_name="outliers",
+                    index=False,
+                )
+                cumulative_yield_table(self.formatted_df, parameter).to_excel(
+                    writer,
+                    sheet_name="cumulative_yield",
                     index=False,
                 )
         except Exception as exc:
@@ -180,6 +193,34 @@ class SummaryTab(QWidget):
             figure.clear()
         except Exception as exc:
             QMessageBox.critical(self, "导出失败", f"导出图表失败：{exc}")
+            return
+
+        QMessageBox.information(self, "导出完成", f"已导出到：{Path(path)}")
+
+    def export_cumulative_plot(self) -> None:
+        if self.summary_df is None or self.formatted_df is None:
+            QMessageBox.warning(self, "无可导出图表", "请先生成统计表。")
+            return
+
+        parameter = self.parameter_combo.currentText() or "yield"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出累计产量图",
+            str(Path("outputs") / f"{parameter}_cumulative_yield.png"),
+            "PNG 图片 (*.png);;PDF 文件 (*.pdf);;TIFF 图片 (*.tif *.tiff)",
+        )
+        if not path:
+            return
+
+        try:
+            figure = plot_cumulative_yield_bar(
+                self.formatted_df,
+                parameter,
+                output_path=path,
+            )
+            figure.clear()
+        except Exception as exc:
+            QMessageBox.critical(self, "导出失败", f"导出累计产量图失败：{exc}")
             return
 
         QMessageBox.information(self, "导出完成", f"已导出到：{Path(path)}")

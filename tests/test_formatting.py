@@ -98,3 +98,35 @@ def test_format_parameters_preserves_source_id_column_when_available() -> None:
     formatted = format_parameters(df, "采收日", "处理情况", ["单果重"])
 
     assert formatted["序号"].tolist() == [101, 205]
+
+
+def test_detect_columns_identifies_replicate_and_excludes_it_from_parameters() -> None:
+    df = pd.DataFrame(
+        {
+            "采收日": ["2026-03-25", "2026-03-25"],
+            "处理情况": ["处理", "对照"],
+            "小区": [1, 2],
+            "产量": [382.62, 395.92],
+        }
+    )
+
+    detection = detect_columns(df)
+
+    assert detection.replicate_column == "小区"
+    assert detection.parameter_columns == ["产量"]
+
+
+def test_format_parameters_preserves_replicate_column_when_selected() -> None:
+    df = pd.DataFrame(
+        {
+            "采收日": ["2026-03-25", "2026-03-25"],
+            "处理情况": ["处理", "对照"],
+            "重复": ["R1", "R2"],
+            "产量": [382.62, 395.92],
+        }
+    )
+
+    formatted = format_parameters(df, "采收日", "处理情况", ["产量"], replicate_column="重复")
+
+    assert list(formatted.columns) == ["序号", "日期", "isoweek", "处理方式", "小区/重复", "产量"]
+    assert formatted["小区/重复"].tolist() == ["R1", "R2"]
